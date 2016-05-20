@@ -94,6 +94,73 @@ def find_source_mask(img_data):
     pass
 
 
+def find_center_row(data):
+
+    # Create interpolator for the median profile
+    interp = scipy.interpolate.interp1d(
+        x=data[:,0], y=data[:,1], kind='linear', 
+        bounds_error=False, fill_value=numpy.NaN)
+
+    #
+    # Optimization routine
+    #
+    def fold_profile(p, interp, maxy, count):
+
+        dx = numpy.arange(maxy, dtype=numpy.float) 
+        x_left = p[0] - dx
+        x_right = p[0] + dx
+
+        profile_left = interp(x_left)
+        profile_right = interp(x_right)
+
+        diff = profile_left - profile_right
+
+        count[0] += 1
+        # print "iteration %d --> %e" % (count[0], p[0])
+        # with open("opt_%d.del" % (count[0]), "w") as f:
+        #     numpy.savetxt(f, profile_left)
+        #     print >>f, "\n"*5,
+        #     numpy.savetxt(f, profile_right)
+        #     print >>f, "\n"*5,
+        #     numpy.savetxt(f, diff)
+
+        return diff[numpy.isfinite(diff)]
+
+    #
+    # Get rid of all points that are too noisy
+    #
+    w=5
+    noise = numpy.array([bottleneck.nanvar(data[i-w:i+w,1]) for i in range(w,data.shape[0]-w+1)])
+    # numpy.savetxt("median_noise", noise)
+    noise[:w] = numpy.NaN
+    noise[-w:] = numpy.NaN
+
+    for iteration in range(3):
+        valid = numpy.isfinite(noise)
+        _perc = numpy.percentile(noise[valid], [16,50,84])
+        _med = _perc[1]
+        _sigma = 0.5*(_perc[2]-_perc[0])
+        outlier = (noise > _med+3*_sigma) | (noise < _med - 3*_sigma)
+        noise[outlier] = numpy.NaN
+
+    #numpy.savetxt("median_noise2", noise)
+    valid = numpy.isfinite(noise)
+    data[:,1][~valid] = numpy.NaN
+
+    #numpy.savetxt("median_noise3", data)
+
+    count=[0]
+    fit_all = scipy.optimize.leastsq(
+        func=fold_profile,
+        x0=[data.shape[0]/5.],
+        args=(interp, data.shape[0]/2,count),
+        full_output=True,
+        epsfcn=1e-1,
+        )
+
+    #print fit_all[0]
+
+    return fit_all[0][0]
 
 def optimal_sky_subtraction(obj_hdulist, 
                             sky_regions=None,
@@ -116,14 +183,21 @@ def optimal_sky_subtraction(obj_hdulist,
     #
     (x_eff, wl_map, medians, p_scale, p_skew, fm) = skytrace.create_wlmap_from_skylines(obj_hdulist)
 
+    y_center = find_center_row(medians)
+    logger.info("Using row %.1f as center line of focal plane" % (y_center))
+
     wlmap_model = wlmodel.rssmodelwave(
         header=obj_hdulist[0].header, 
         img=obj_hdulist['SCI'].data,
-        xbin=4, ybin=4)
+        xbin=4, ybin=4,
+        y_center=y_center)
+
+    #wl_map = wlmap_model
 
     logger.info("Loading all data from FITS")
     obj_data = obj_hdulist['SCI.RAW'].data #/ fm.reshape((-1,1))
-    obj_wl   = wlmap_model #wl_map #obj_hdulist['WAVELENGTH'].data
+    #obj_wl   = wlmap_model #wl_map #obj_hdulist['WAVELENGTH'].data
+    obj_wl   = wl_map #wl_map #obj_hdulist['WAVELENGTH'].data
     obj_rms  = obj_hdulist['VAR'].data / fm.reshape((-1,1))
 
     pysalt.clobberfile("XXX.fits")
