@@ -6,6 +6,7 @@ import numpy
 import scipy
 
 import pysalt
+import logging
 
 datadir="/work/salt/sandbox_official/polSALT/polsalt/data/"
 
@@ -14,9 +15,11 @@ datadir="/work/salt/sandbox_official/polSALT/polsalt/data/"
 
 def rssmodelwave(#grating,grang,artic,cbin,refimg,
         header, img,
-        xbin=1, ybin=1):
+        xbin=1, ybin=1,
+        y_center=None, x_center=None):
 #   compute wavelengths from model (this can probably be done using pyraf spectrograph model)
 
+    logger = logging.getLogger("RSS-2Dmodel")
     ncols = img.shape[0]
     nrows = img.shape[1]
 
@@ -25,6 +28,12 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     # also account for binning
     y *= ybin
     x *= xbin
+
+    if (y_center == None):
+        y_center = img.shape[0]/2.
+    if (x_center == None):
+        x_center = img.shape[1]/2.
+    logger.info("Using (binned) center coordinates of x=%.2f, y=%.2f" % (x_center, y_center))
 
     #
     #
@@ -90,8 +99,8 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     # Iteratively compute a lambda for each pixel, refine the focal length as 
     # fct of lambda, and recompute lambda
     # 
-    _x = (x - 3162) * 0.015 #/ 3162.
-    _y = (y - 2048) * 0.015 # / 2048.
+    _x = (x - (x_center*xbin)) * 0.015 #/ 3162.
+    _y = ((y_center*ybin)-y) * 0.015 # / 2048.
     print numpy.min(x), numpy.max(x)
     print numpy.min(y), numpy.max(y)
 
