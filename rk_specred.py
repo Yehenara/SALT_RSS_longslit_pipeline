@@ -1161,12 +1161,21 @@ def specred(rawdir, prodir,
         # the best overall sky subtraction.
         #
         logger.info("Minimizing sky residuals")
-        scaling_data, opt_sky_scaling = optscale.minimize_sky_residuals(
-            img_data, sky_2d, vert_size=5, smooth=20, debug_out=True)
-        # opt_sky_scaling = fm.reshape((-1,1))
-        numpy.savetxt(out_filename[:-5]+".skyscaling", opt_sky_scaling)
+        # scaling_data, opt_sky_scaling = optscale.minimize_sky_residuals(
+        #     img_data, sky_2d, vert_size=5, smooth=20, debug_out=True)
+        # # opt_sky_scaling = fm.reshape((-1,1))
+        # numpy.savetxt(out_filename[:-5]+".skyscaling", opt_sky_scaling)
 
-        data, filtered, full2d = optscale.minimize_sky_residuals2(
+        # full2d, data, pf2, data2 = optscale.minimize_sky_residuals2(
+        #     img=img_data, 
+        #     sky=sky_2d, 
+        #     wl=wl_map, 
+        #     bpm=hdu['BPM'].data,
+        #     vert_size=-25, 
+        #     dl=-25)
+        # numpy.savetxt("new_scaling.dump", data)
+
+        full2d, data, pf2, data2, spline2d = optscale.minimize_sky_residuals2_spline(
             img=img_data, 
             sky=sky_2d, 
             wl=wl_map, 
@@ -1174,6 +1183,17 @@ def specred(rawdir, prodir,
             vert_size=-25, 
             dl=-25)
         numpy.savetxt("new_scaling.dump", data)
+        
+        skyscaling2d = spline2d
+
+        # data, filtered, full2d = optscale.minimize_sky_residuals2(
+        #     img=img_data, 
+        #     sky=sky_2d, 
+        #     wl=wl_map, 
+        #     bpm=hdu['BPM'].data,
+        #     vert_size=-25, 
+        #     dl=-25)
+        # numpy.savetxt("new_scaling.dump", data)
 
         #
         # step 2: 
@@ -1182,7 +1202,7 @@ def specred(rawdir, prodir,
         #
         pass
 
-        skysub_img = (img_data) - (sky_2d * full2d) #opt_sky_scaling)
+        skysub_img = (img_data) - (sky_2d * skyscaling2d) #opt_sky_scaling)
         skysub_hdu = fits.ImageHDU(header=hdu['SCI'].header,
                                      data=numpy.array(skysub_img),
                                      name="SKYSUB.X")
@@ -1199,9 +1219,18 @@ def specred(rawdir, prodir,
         ss_hdu2.name = "SKYSUB.IMG"
         hdu.append(ss_hdu2)
 
+        ss_hdu2 = fits.ImageHDU(header=hdu['SCI'].header,
+                                 data=(sky_2d))
+        ss_hdu2.name = "SKY.RAW"
+        hdu.append(ss_hdu2)
+
         hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
                                  data=wl_map,
                                  name="WL_XXX")
+                   )
+        hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
+                                 data=skyscaling2d,
+                                 name="SKY.SCALE")
                    )
 
         #
@@ -1231,6 +1260,11 @@ def specred(rawdir, prodir,
         )
         cell_cleaned, cell_mask, cell_saturated = crj
         
+        hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
+                                 data=skysub_img+median_sky-cell_cleaned,
+                                 name="COSMICS"))
+
+
         final_hdu = fits.ImageHDU(header=hdu['SCI'].header,
                                   data=(cell_cleaned-median_sky),
                                   name="SKYSUB.OPT")
