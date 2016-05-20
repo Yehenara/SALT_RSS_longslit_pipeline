@@ -178,6 +178,8 @@ def create_wlmap_from_skylines(hdulist):
     all_traces = numpy.array(all_traces)
     print all_traces.shape
 
+    pyfits.PrimaryHDU(data=all_traces).writeto("alltraces.fits", clobber=True)
+
     ##########################################################################
     #
     # Now do some outlier rejection
