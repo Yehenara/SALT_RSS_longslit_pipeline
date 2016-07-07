@@ -75,6 +75,8 @@ import logging
 import numpy
 import pickle
 
+from optparse import OptionParser
+
 #
 # Ralf Kotulla modules
 #
@@ -458,7 +460,9 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
             yshift = [0, 0]
             rotation = [0, 0]
             gap, xshift, yshift, rotation, status = pysalt.lib.saltio.readccdgeom(geomfile, logfile=None, status=0)
-            print "\n@@"*5, gap, xshift, yshift, rotation, "\n@"*5
+            logger.debug("Using CCD geometry: gap=%d, Xshift=%d,%d, Yshift=%d,%d, rot=%d,%d" % (
+                gap, xshift[0], xshift[1], yshift[0], yshift[1], rotation[0], rotation[1]))
+            #print "\n@@"*5, gap, xshift, yshift, rotation, "\n@"*5
 
             logger.debug("mosaicing -- GAP:%f - X-shift:%f/%f  y-shift:%f/%f  rotation:%f/%f" % (
                 gap, xshift[0], xshift[1], yshift[0], yshift[1], rotation[0], rotation[1]))
@@ -497,7 +501,7 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
 #################################################################################
 #################################################################################
 
-def specred(rawdir, prodir, 
+def specred(rawdir, prodir, options, 
             imreduce=True, specreduce=True, 
             calfile=None, lamp='Ar', 
             automethod='Matchlines', skysection=[800,1000], 
@@ -823,9 +827,9 @@ def specred(rawdir, prodir,
 
     #return
 
-    with open("flatlist", "w") as picklefile:
-        pickle.dump(flatfield_list, picklefile)
-    print "\nPICKLE done"*10
+    #with open("flatlist", "w") as picklefile:
+    #    pickle.dump(flatfield_list, picklefile)
+    #print "\nPICKLE done"*10
 
     #############################################################################
     #
@@ -1081,7 +1085,7 @@ def specred(rawdir, prodir,
         #                                       iterate=False,
         #                                       skiplength=10, 
         #                                       return_2d=False)
-        # numpy.savetxt("%s.simple_spec" % (_fb), simple_spec)
+        # numpy.savetxt("%s.simple_spec" % (_fb), simple_specs)
 
         # simple_spec = hdu['VAR'].data[hdu['VAR'].data.shape[0]/2,:]
         # numpy.savetxt("%s.simple_spec_2" % (_fb), simple_spec)
@@ -1118,10 +1122,12 @@ def specred(rawdir, prodir,
             skiplength=5,
             skyline_flat=skyline_flat, #intensity_profile.reshape((-1,1)),
             #select_region=numpy.array([[900,950]])
-            select_region=numpy.array([[600,640],[660,700]])
+            select_region=numpy.array([[600,640],[660,700]]),
+            wlmode=options.wlmode,
+            debug_prefix="%s__" % (fb[:-5])
         )
         (x_eff, wl_map, medians, p_scale, p_skew, fm) = extra
-
+        
         # bs = 100
         # maxbs = 10
 
@@ -1166,25 +1172,56 @@ def specred(rawdir, prodir,
         # # opt_sky_scaling = fm.reshape((-1,1))
         # numpy.savetxt(out_filename[:-5]+".skyscaling", opt_sky_scaling)
 
-        # full2d, data, pf2, data2 = optscale.minimize_sky_residuals2(
-        #     img=img_data, 
-        #     sky=sky_2d, 
-        #     wl=wl_map, 
-        #     bpm=hdu['BPM'].data,
-        #     vert_size=-25, 
-        #     dl=-25)
-        # numpy.savetxt("new_scaling.dump", data)
+        skyscaling2d = 1.
+        opt_sky_scaling = 1.
 
-        full2d, data, pf2, data2, spline2d = optscale.minimize_sky_residuals2_spline(
-            img=img_data, 
-            sky=sky_2d, 
-            wl=wl_map, 
-            bpm=hdu['BPM'].data,
-            vert_size=-25, 
-            dl=-25)
-        numpy.savetxt("new_scaling.dump", data)
-        
-        skyscaling2d = spline2d
+        pyfits.PrimaryHDU(data=img_data).writeto("debug_minimizeskyresiduals_img.fits", clobber=True)
+        pyfits.PrimaryHDU(data=sky_2d).writeto("debug_minimizeskyresiduals_sky2d.fits", clobber=True)
+        pyfits.PrimaryHDU(data=wl_map).writeto("debug_minimizeskyresiduals_wlmap.fits", clobber=True)
+
+        if (options.skyscaling == 'none'):
+
+            skyscaling2d = numpy.ones(img_data.shape)
+
+            pass
+
+        elif (options.skyscaling == 's2d'):
+
+            full2d, data, pf2, data2, spline2d = optscale.minimize_sky_residuals2_spline(
+                img=img_data, 
+                sky=sky_2d, 
+                wl=wl_map, 
+                bpm=hdu['BPM'].data,
+                vert_size=-25, 
+                dl=-25)
+            numpy.savetxt("new_scaling.dump", data)
+            skyscaling2d = spline2d
+
+            pass
+
+        elif (options.skyscaling == 'p2d'):
+            pass
+
+            ret = optscale.minimize_sky_residuals2(
+                img=img_data, 
+                sky=sky_2d, 
+                wl=wl_map, 
+                bpm=hdu['BPM'].data,
+                vert_size=-25, 
+                dl=-25)
+            if (ret != None):
+                full2d, data, pf2, data2 = ret
+                numpy.savetxt("new_scaling.dump", data)
+            else:
+                logger.error("Unable to optimize sky subtraction, continuing without optimization")
+                full2d = numpy.ones(img_data.shape)
+                data = None
+                pf2 = None
+                data2 = None
+
+            opt_sky_scaling = full2d
+            skyscaling2d = full2d
+
 
         # data, filtered, full2d = optscale.minimize_sky_residuals2(
         #     img=img_data, 
@@ -1202,11 +1239,6 @@ def specred(rawdir, prodir,
         #
         pass
 
-        skysub_img = (img_data) - (sky_2d * skyscaling2d) #opt_sky_scaling)
-        skysub_hdu = fits.ImageHDU(header=hdu['SCI'].header,
-                                     data=numpy.array(skysub_img),
-                                     name="SKYSUB.X")
-        hdu.append(skysub_hdu)
 
         # skysub = obj_data - sky2d
         # ss_hdu = fits.ImageHDU(header=obj_hdulist['SCI.RAW'].header,
@@ -1215,7 +1247,9 @@ def specred(rawdir, prodir,
         # obj_hdulist.append(ss_hdu)
 
         ss_hdu2 = fits.ImageHDU(header=hdu['SCI'].header,
-                                 data=(sky_2d * opt_sky_scaling))
+                                 data=(sky_2d * skyscaling2d))
+        # ss_hdu2 = fits.ImageHDU(header=hdu['SCI'].header,
+        #                          data=(sky_2d * opt_sky_scaling))
         ss_hdu2.name = "SKYSUB.IMG"
         hdu.append(ss_hdu2)
 
@@ -1232,6 +1266,12 @@ def specred(rawdir, prodir,
                                  data=skyscaling2d,
                                  name="SKY.SCALE")
                    )
+
+        skysub_img = (img_data) - (sky_2d * skyscaling2d) #opt_sky_scaling)
+        skysub_hdu = fits.ImageHDU(header=hdu['SCI'].header,
+                                     data=numpy.array(skysub_img),
+                                     name="SKYSUB.OPT")
+        hdu.append(skysub_hdu)
 
         #
         # Run cosmic ray rejection on the sky-line subtracted frame
@@ -1768,8 +1808,20 @@ if __name__=='__main__':
 
     logger = pysalt.mp_logging.setup_logging()
 
-    rawdir=sys.argv[1]
+    parser = OptionParser()
+    parser.add_option("-w", "--wl", dest="wlmode",
+                      help="How to create wavelength map (arc/sky/model)",
+                      default="arc")
+    parser.add_option("-s", "--scale", dest="skyscaling",
+                      help="How to scale the sky spectrum (none,s2d,p2d)",
+                      default="none")
+    (options, cmdline_args) = parser.parse_args()
+    
+    print options
+    print cmdline_args
+
+    rawdir=cmdline_args[0]
     prodir=os.path.curdir+'/'
-    specred(rawdir, prodir)
+    specred(rawdir, prodir, options)
 
     pysalt.mp_logging.shutdown_logging(logger)
