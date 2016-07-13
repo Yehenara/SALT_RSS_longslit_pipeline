@@ -8,6 +8,7 @@ from astropy.io import fits
 import pysalt.mp_logging
 import logging
 import bottleneck
+
 import wlcal
 import skyline_intensity
 import logging
@@ -16,6 +17,8 @@ import fastedge
 import skytrace
 import wlmodel
 
+
+import spline_pickle_test
 
 use_fast_edges = True
 
@@ -415,6 +418,7 @@ def optimal_sky_subtraction(obj_hdulist,
         dn = 10
 
         if (use_fast_edges):
+            logger.info("Using fast-edge method")
             edges = fastedge.find_line_edges(allskies, line_sigma=2.75)
 
             # distribute additional basepoints across 2. (+/- dl) angstroem 
@@ -425,12 +429,12 @@ def optimal_sky_subtraction(obj_hdulist,
                 all_edge_points[ie,:] = bp[:]
 
         else:
-            pysalt.clobberfile("edges.cheat")
-            if (not os.path.isfile("edges.cheat")):
+            pysalt.clobberfile(debug_prefix+"edges.cheat")
+            if (not os.path.isfile(debug_prefix+"edges.cheat")):
                 edges = find_edges_of_skylines.find_edges_of_skylines(allskies, fn="XXX")
                 numpy.savetxt(debug_prefix+"edges.cheat", edges)
             else:
-                edges = numpy.loadtxt("edges.cheat")
+                edges = numpy.loadtxt(debug_prefix+"edges.cheat")
 
             # distribute additional basepoints across 2. (+/- dl) angstroem 
             # for each edge
@@ -559,6 +563,16 @@ def optimal_sky_subtraction(obj_hdulist,
                 bbox=[wl_min, wl_max], 
                 k=3, # use a cubic spline fit
             )
+            spline_pickle_test.write_pickle(debug_prefix+"splinein",
+                fct=scipy.interpolate.LSQUnivariateSpline,
+                x=good_data[:,0], #allskies[:,0],#[good_point],
+                y=good_data[:,1], #allskies[:,1],#[good_point],
+                t=k_iter_good, #k_wl,
+                w=None, # no weights (for now)
+                bbox=[wl_min, wl_max],
+                k=3,
+                )
+
         except ValueError:
             # this is most likely 
             # ValueError: Interior knots t must satisfy Schoenberg-Whitney conditions
@@ -690,7 +704,6 @@ def optimal_sky_subtraction(obj_hdulist,
     ascombined[:,3] = allskies[:,1] - allskies_synth[:]
     numpy.savetxt(debug_prefix+"skysub_all", ascombined)
 
-    
     if (not spline_iter == None):
         padded = numpy.empty((obj_wl.shape[0], obj_wl.shape[1]+2))
         padded[:, 1:-1] = obj_wl[:,:]
@@ -708,10 +721,14 @@ def optimal_sky_subtraction(obj_hdulist,
         sky2d = numpy.array([spline_iter.integral(a,b) for a,b in zip(from_wl.ravel(),to_wl.ravel())]).reshape(obj_wl.shape)
         t1 = time.time()
         # print "integration took %f seconds" % (t1-t0)
-        fits.PrimaryHDU(data=sky2d).writeto("IntegSky.fits", clobber=True)
+        fits.PrimaryHDU(data=sky2d).writeto(debug_prefix+"IntegSky.fits", clobber=True)
         logger.debug("2d-sky epctrum written to IntegSky.fits")
 
-        logger.info("Integration too %.3f seconds" % (t1-t0))
+        logger.info("Integration took %.3f seconds" % (t1-t0))
+
+        fits.PrimaryHDU(data=from_wl).writeto(debug_prefix+"IntegSky_from.fits", clobber=True)
+        fits.PrimaryHDU(data=to_wl).writeto(debug_prefix+"IntegSky_to.fits", clobber=True)
+        fits.PrimaryHDU(data=(to_wl-from_wl)).writeto(debug_prefix+"IntegSky_delta.fits", clobber=True)
 
         # t0 = time.time()
         # sky2d = spline_iter(obj_wl.ravel()).reshape(obj_wl.shape)
