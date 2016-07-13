@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import warnings
+import StringIO
 
 import os, sys, scipy, scipy.stats, scipy.ndimage, numpy
 import wlcal
@@ -260,7 +261,11 @@ def extract_skyline_intensity_profile(
     
     lines = wlcal.find_list_of_lines(nightsky_spec_1d, readnoise=2, avg_width=20,
                                      pre_smooth=2)
-    print lines
+    dum = StringIO.StringIO()
+    numpy.savetxt(dum, lines)
+    logger.debug("Found these lines:\n%s" % (dum.getvalue()))
+
+    #print lines
 
     #
     # Eliminate all lines close to (within 50 pixels) any of the chip gaps
