@@ -223,12 +223,16 @@ def create_wlmap_from_skylines(hdulist):
         print
         print "Iteration:", iteration
         print profiles.shape
-        quantiles = numpy.array(numpy.nanpercentile(
-            a=profiles, 
-            q=[16,50,84],
-            axis=0,
+
+        try:
+            quantiles = numpy.array(numpy.nanpercentile(
+                a=profiles, 
+                q=[16,50,84],
+                axis=0,
             ))
-        print "new:", quantiles.shape
+            print "new:", quantiles.shape
+        except:
+            break
 
         # quantiles = scipy.stats.scoreatpercentile(
         #     a=profiles, 
