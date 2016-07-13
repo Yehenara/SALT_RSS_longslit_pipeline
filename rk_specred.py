@@ -90,6 +90,9 @@ import prep_science
 import podi_cython
 import optscale
 
+# this is just temporary to make debugging easier
+import spline_pickle_test
+
 wlmap_fitorder = [2,2]
 
 def find_appropriate_arc(hdulist, arcfilelist, arcinfos={}):
@@ -1117,7 +1120,7 @@ def specred(rawdir, prodir, options,
         sky_2d, spline, extra = optimalskysub.optimal_sky_subtraction(
             hdu, 
             sky_regions=None, #sky_regions,
-            N_points=2000,
+            N_points=600,
             iterate=False,
             skiplength=5,
             skyline_flat=skyline_flat, #intensity_profile.reshape((-1,1)),
@@ -1127,7 +1130,10 @@ def specred(rawdir, prodir, options,
             debug_prefix="%s__" % (fb[:-5])
         )
         (x_eff, wl_map, medians, p_scale, p_skew, fm) = extra
-        
+
+        # recompute sky-2d based on the full wavelength map and the spline interpolator
+        #sky_2d = spline(wls_2d)
+
         # bs = 100
         # maxbs = 10
 
