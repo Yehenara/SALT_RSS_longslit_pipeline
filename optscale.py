@@ -111,8 +111,15 @@ def minimize_sky_residuals2(img, sky, wl, bpm, vert_size=5, smooth=3, debug_out=
     sky_lines, sky_continuum= prep_science.filter_isolate_skylines(sky)
 
     # find block size in wavelength and spatial direction
-    min_wl = bottleneck.nanmin(wl)
-    max_wl = bottleneck.nanmax(wl)
+    print type(wl)
+    print wl
+    valid_wl = numpy.isfinite(wl)
+    if (numpy.sum(valid_wl) <= 1):
+        logger.error("Something went wrong, no valid WL data")
+        return None
+
+    min_wl = numpy.min(wl[valid_wl]) #bottleneck.nanmin(wl)
+    max_wl = numpy.max(wl[valid_wl]) #bottleneck.nanmax(wl)
     if (dl < 0):
         dl = (max_wl-min_wl)/numpy.fabs(dl)
     if (vert_size<0):
