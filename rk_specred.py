@@ -14,23 +14,30 @@ and up to date.
 
 """
 
-import os, sys, glob, shutil, time
+import os
+import sys
+import glob
+import shutil
+import time
 
 import numpy
-#import pyfits
-#import astropy.io.fits as pyfits
+# import pyfits
+# import astropy.io.fits as pyfits
 from astropy.io import fits
 
 from scipy.ndimage.filters import median_filter
 import bottleneck
 import scipy.interpolate
+
 numpy.seterr(divide='ignore', invalid='ignore')
 
 # Disable nasty and useless RankWarning when spline fitting
 import warnings
+
 warnings.simplefilter('ignore', numpy.RankWarning)
-#warnings.simplefilter('ignore', pyfits.PyfitsDeprecationWarning)
+# warnings.simplefilter('ignore', pyfits.PyfitsDeprecationWarning)
 from astropy.utils.exceptions import *
+
 warnings.simplefilter('ignore', AstropyDeprecationWarning)
 warnings.simplefilter('ignore', FutureWarning)
 warnings.simplefilter('ignore', UserWarning)
@@ -45,8 +52,8 @@ warnings.simplefilter('ignore', UserWarning)
 # sys.path.insert(1, "/work/pysalt/slottools")
 # sys.path.insert(1, "/work/pysalt/lib")
 
-#from pyraf import iraf
-#from iraf import pysalt
+# from pyraf import iraf
+# from iraf import pysalt
 
 import pysalt
 from pysalt.saltred.saltobslog import obslog
@@ -69,7 +76,7 @@ from pysalt.saltspec.speccal import speccal
 
 from PySpectrograph.Spectra import findobj
 
-#import pyfits
+# import pyfits
 import pysalt.mp_logging
 import logging
 import numpy
@@ -93,25 +100,27 @@ import optscale
 # this is just temporary to make debugging easier
 import spline_pickle_test
 
-wlmap_fitorder = [2,2]
+wlmap_fitorder = [2, 2]
 
-def find_appropriate_arc(hdulist, arcfilelist, arcinfos={}):
 
+def find_appropriate_arc(hdulist, arcfilelist, arcinfos=None):
+    if arcinfos is None:
+        arcinfos = {}
     hdrs_to_match = [
         'CCDSUM',
-        'WP-STATE', # Waveplate State Machine State
-        'ET-STATE', # Etalon State Machine State
-        'GR-STATE', # Grating State Machine State
-        'GR-STA',   # Commanded Grating Station
+        'WP-STATE',  # Waveplate State Machine State
+        'ET-STATE',  # Etalon State Machine State
+        'GR-STATE',  # Grating State Machine State
+        'GR-STA',  # Commanded Grating Station
         'GRATING',  # Commanded grating station
-        'GRTILT',   # Commanded grating angle
-        'BS-STATE', # Beamsplitter State Machine State
-        'FI-STATE', # Filter State Machine State
-        'AR-STATE', # Articulation State Machine State
-        'AR-STA',   # Commanded Articulation Station
-        'CAMANG',   # Commanded Articulation Station
+        'GRTILT',  # Commanded grating angle
+        'BS-STATE',  # Beamsplitter State Machine State
+        'FI-STATE',  # Filter State Machine State
+        'AR-STATE',  # Articulation State Machine State
+        'AR-STA',  # Commanded Articulation Station
+        'CAMANG',  # Commanded Articulation Station
         'POLCONF',  # Polarization configuration
-        ]
+    ]
 
     logger = logging.getLogger("FindGoodArc")
     logger.info("Checking the following list of ARCs:\n * %s" % ("\n * ".join(arcfilelist)))
@@ -136,8 +145,7 @@ def find_appropriate_arc(hdulist, arcfilelist, arcinfos={}):
             logger.debug("Comparing header key --> %s <--" % (hdrname))
 
             # if we can't compare the headers we'll assume they won't match
-            if (not hdrname in hdulist[0].header or
-                not hdrname in hdr):
+            if (not hdrname in hdulist[0].header or not hdrname in hdr):
                 matches = False
                 logger.debug("Not found in one of the two files")
                 break
@@ -153,14 +161,12 @@ def find_appropriate_arc(hdulist, arcfilelist, arcinfos={}):
             logger.debug("FOUND GOOD ARC")
             matching_arcs.append(arcfile)
 
-    print "***\n"*3,matching_arcs,"\n***"*3
+    print "***\n" * 3, matching_arcs, "\n***" * 3
 
     return matching_arcs
 
 
-
 def tiledata(hdulist, rssgeom):
-
     logger = logging.getLogger("TileData")
 
     out_hdus = [hdulist[0]]
@@ -175,14 +181,14 @@ def tiledata(hdulist, rssgeom):
     bpm_exts = []
     detsecs = []
 
-    exts = {} #'SCI': [], 'VAR': [], 'BPM': [] }
+    exts = {}  # 'SCI': [], 'VAR': [], 'BPM': [] }
     ext_order = ['SCI', 'BPM', 'VAR']
     for e in ext_order:
         exts[e] = []
 
     for i in range(1, len(hdulist)):
         if (hdulist[i].header['EXTNAME'] == 'SCI'):
-            
+
             # Remember this function for later use
             sci_exts.append(i)
             exts['SCI'].append(i)
@@ -194,7 +200,6 @@ def tiledata(hdulist, rssgeom):
             detsec_startx = int(decsec[1:-1].split(":")[0])
             detsecs.append(detsec_startx)
 
-                       
             var_ext, bpm_ext = -1, -1
             if ('VAREXT' in hdulist[i].header):
                 var_ext = hdulist[i].header['VAREXT']
@@ -206,8 +211,8 @@ def tiledata(hdulist, rssgeom):
             exts['VAR'].append(var_ext)
             exts['BPM'].append(bpm_ext)
 
-    #print sci_exts
-    #print detsecs
+    # print sci_exts
+    # print detsecs
 
     #
     # Better make sure we have all 6 CCDs
@@ -229,7 +234,7 @@ def tiledata(hdulist, rssgeom):
     for name in exts:
         exts[name] = numpy.array(exts[name])[detsec_sort]
 
-    #print exts
+    # print exts
 
     #
     # Now we have all extensions in the right order
@@ -248,12 +253,12 @@ def tiledata(hdulist, rssgeom):
     binx, biny = pysalt.get_binning(hdulist)
     logger.info("Creating tiled image using binning %d x %d" % (binx, biny))
 
-    width = numpy.sum(amp_width) + 2*gap/binx # + numpy.sum(numpy.fabs((xshift/binx).round()))
-    height = numpy.max(amp_height) #+ numpy.sum(numpy.fabs((yshift/biny).round()))
+    width = numpy.sum(amp_width) + 2 * gap / binx  # + numpy.sum(numpy.fabs((xshift/binx).round()))
+    height = numpy.max(amp_height)  # + numpy.sum(numpy.fabs((yshift/biny).round()))
 
-    #print width, height
-    #print xshift
-    #print yshift
+    # print width, height
+    # print xshift
+    # print yshift
 
     for name in ext_order:
 
@@ -261,12 +266,12 @@ def tiledata(hdulist, rssgeom):
 
         # Now create the mosaics
         data = numpy.empty((height, width))
-        data[:,:] = numpy.NaN
+        data[:, :] = numpy.NaN
 
-        for i, ext in enumerate(exts[name]): #sci_exts):
+        for i, ext in enumerate(exts[name]):  # sci_exts):
 
-            dx_gaps = int( gap * int(i/2) / binx )
-            dx_shift = xshift[int(i/2)]/binx
+            dx_gaps = int(gap * int(i / 2) / binx)
+            dx_shift = xshift[int(i / 2)] / binx
             startx = numpy.sum(amp_width[0:i])
 
             # Add in gaps if applicable
@@ -278,50 +283,46 @@ def tiledata(hdulist, rssgeom):
 
             logger.debug("Putting extension %d (%s) at X=%d -- %d (gaps=%d, shift=%d)" % (
                 i, name, startx, endx, dx_gaps, dx_shift))
-            #logger.info("input size: %d x %d" % (amp_width[i], amp_height[i]))
-            #logger.info("output size: %d x %d" % (amp_width[i], height))
-            data[:, startx:endx] = hdulist[ext].data[:,:amp_width[i]]
+            # logger.info("input size: %d x %d" % (amp_width[i], amp_height[i]))
+            # logger.info("output size: %d x %d" % (amp_width[i], height))
+            data[:, startx:endx] = hdulist[ext].data[:, :amp_width[i]]
 
         imghdu = fits.ImageHDU(data=data)
         imghdu.name = name
         out_hdus.append(imghdu)
-    
+
     logger.info("Finished tiling for all %d data products" % (len(ext_order)))
 
     return fits.HDUList(out_hdus)
 
 
-
-            
-
-def salt_prepdata(infile, badpixelimage=None, create_variance=False, 
+def salt_prepdata(infile, badpixelimage=None, create_variance=False,
                   masterbias=None, clean_cosmics=True,
                   flatfield_frame=None, mosaic=False,
                   verbose=False, *args):
-
     _, fb = os.path.split(infile)
     logger = logging.getLogger("PrepData(%s)" % (fb))
     logger.info("Working on file %s" % (infile))
 
-    #hdulist = pyfits.open(infile)
+    # hdulist = pyfits.open(infile)
     hdulist = fits.open(infile)
-    #print hdulist, type(hdulist)
+    # print hdulist, type(hdulist)
 
-    pysalt_log = None #'pysalt.log'
+    pysalt_log = None  # 'pysalt.log'
 
     badpixel_hdu = None
-    if (not badpixelimage == None):
+    if (not badpixelimage is None):
         badpixel_hdu = fits.open(badpixelimage)
-    
+
     #
     # Do some prepping
     #
-    #hdulist.info()
+    # hdulist.info()
 
     logger.debug("Prepare'ing")
     hdulist = pysalt.saltred.saltprepare.prepare(
         hdulist,
-        createvar=create_variance, 
+        createvar=create_variance,
         badpixelstruct=badpixel_hdu)
     # Add some history headers here
 
@@ -332,14 +333,14 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
     # for ext in hdulist:
     #     if (not ext.data == None): print ext.data.shape
     bias_hdu = None
-    if (not masterbias == None and os.path.isfile(masterbias)):
+    if (not masterbias is None and os.path.isfile(masterbias)):
         bias_hdu = fits.open(masterbias)
     hdulist = pysalt.saltred.saltbias.bias(
-        hdulist, 
-        subover=True, trim=True, subbias=False, 
+        hdulist,
+        subover=True, trim=True, subbias=False,
         bstruct=bias_hdu,
-        median=False, function='polynomial', order=5, rej_lo=3.0, rej_hi=5.0, 
-        niter=10, plotover=False, 
+        median=False, function='polynomial', order=5, rej_lo=3.0, rej_hi=5.0,
+        niter=10, plotover=False,
         log=pysalt_log, verbose=verbose)
     logger.debug("done with bias & overscan")
 
@@ -353,12 +354,12 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
     # Gain
     #
     logger.debug("Correcting gain")
-    dblist = [] #saltio.readgaindb(gaindb)
+    dblist = []  # saltio.readgaindb(gaindb)
     hdulist = pysalt.saltred.saltgain.gain(hdulist,
-                   mult=True, 
-                   usedb=False, 
-                   dblist=dblist, 
-                   log=pysalt_log, verbose=verbose)
+                                           mult=True,
+                                           usedb=False,
+                                           dblist=dblist,
+                                           log=pysalt_log, verbose=verbose)
     logger.debug("done with gain")
 
     #
@@ -370,15 +371,15 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
         xtalkfile = xtalkfile.strip()
         xdict = saltio.readxtalkcoeff(xtalkfile)
     else:
-        xdict=None
+        xdict = None
     if usedb:
-        obsdate=saltkey.get('DATE-OBS', struct[0])
-        obsdate=int('%s%s%s' % (obsdate[0:4],obsdate[5:7], obsdate[8:]))
-        xkey=numpy.array(xdict.keys())
-        date=xkey[abs(xkey-obsdate).argmin()]
-        xcoeff=xdict[date]
+        obsdate = saltkey.get('DATE-OBS', struct[0])
+        obsdate = int('%s%s%s' % (obsdate[0:4], obsdate[5:7], obsdate[8:]))
+        xkey = numpy.array(xdict.keys())
+        date = xkey[abs(xkey - obsdate).argmin()]
+        xcoeff = xdict[date]
     else:
-        xcoeff=[]
+        xcoeff = []
 
     hdulist = pysalt.saltred.saltxtalk.xtalk(hdulist, xcoeff, log=pysalt_log, verbose=verbose)
     logger.debug("done with crosstalk")
@@ -386,10 +387,10 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
     #
     # crj-clean
     #
-    #clean the cosmic rays
+    # clean the cosmic rays
     multithread = True
     logger.debug("removing cosmics")
-    if multithread and len(hdulist)>1:
+    if multithread and len(hdulist) > 1:
         crj_function = pysalt.saltred.saltcrclean.multicrclean
     else:
         crj_function = pysalt.saltred.saltcrclean.crclean
@@ -403,22 +404,22 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
         sigclip = 5.0
         sigfrac = 0.6
         objlim = 5.0
-        saturation_limit=65000
+        saturation_limit = 65000
 
         # This is BEFORE mosaicing, therefore:
         # Loop over all SCI extensions
         for ext in hdulist:
             if (ext.name == 'SCI'):
                 with open("headers", "a") as h:
-                    print >>h, ext.header
+                    print >> h, ext.header
 
                 gain = 1.5 if (not 'GAIN' in ext.header) else ext.header['GAIN']
                 readnoise = 3 if (not 'RDNOISE' in ext.header) else ext.header['RDNOISE']
 
                 crj = podi_cython.lacosmics(
-                    ext.data.astype(numpy.float64), 
-                    gain=gain, 
-                    readnoise=readnoise, 
+                    ext.data.astype(numpy.float64),
+                    gain=gain,
+                    readnoise=readnoise,
                     niter=3,
                     sigclip=sigclip, sigfrac=sigfrac, objlim=objlim,
                     saturation_limit=saturation_limit,
@@ -426,22 +427,21 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
                 )
                 cell_cleaned, cell_mask, cell_saturated = crj
                 ext.data = cell_cleaned
-        
-    logger.debug("done with cosmics")
 
+    logger.debug("done with cosmics")
 
     #
     # Apply flat-field correction if requested
     #
     logger.info("FLAT: %s" % (str(flatfield_frame)))
-    if (not flatfield_frame == None and os.path.isfile(flatfield_frame)):
+    if (not flatfield_frame is None and os.path.isfile(flatfield_frame)):
         logger.debug("Applying flatfield")
         flathdu = fits.open(flatfield_frame)
         pysalt.saltred.saltflat.flat(
-            struct=hdulist, #input
-            fstruct=flathdu, # flatfield
-            )
-        #saltflat('xgbpP*fits', '', 'f', flatimage, minflat=500, clobber=True, logfile=logfile, verbose=True)
+            struct=hdulist,  # input
+            fstruct=flathdu,  # flatfield
+        )
+        # saltflat('xgbpP*fits', '', 'f', flatimage, minflat=500, clobber=True, logfile=logfile, verbose=True)
         flathdu.close()
         logger.debug("done with flatfield")
     else:
@@ -449,8 +449,8 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
 
     if (mosaic):
         logger.debug("Mosaicing all chips together")
-        geomfile=pysalt.get_data_filename("pysalt$data/rss/RSSgeom.dat")
-        geomfile=pysalt.get_data_filename("data/rss/RSSgeom.dat")
+        geomfile = pysalt.get_data_filename("pysalt$data/rss/RSSgeom.dat")
+        geomfile = pysalt.get_data_filename("data/rss/RSSgeom.dat")
         logger.debug("Reading gemotry from file %s (%s)" % (geomfile, os.path.isfile(geomfile)))
 
         # does CCD geometry definition file exist
@@ -465,18 +465,18 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
             gap, xshift, yshift, rotation, status = pysalt.lib.saltio.readccdgeom(geomfile, logfile=None, status=0)
             logger.debug("Using CCD geometry: gap=%d, Xshift=%d,%d, Yshift=%d,%d, rot=%d,%d" % (
                 gap, xshift[0], xshift[1], yshift[0], yshift[1], rotation[0], rotation[1]))
-            #print "\n@@"*5, gap, xshift, yshift, rotation, "\n@"*5
+            # print "\n@@"*5, gap, xshift, yshift, rotation, "\n@"*5
 
             logger.debug("mosaicing -- GAP:%f - X-shift:%f/%f  y-shift:%f/%f  rotation:%f/%f" % (
                 gap, xshift[0], xshift[1], yshift[0], yshift[1], rotation[0], rotation[1]))
 
-            #logger.info("File structure before mosaicing:")
-            #hdulist.info()
+            # logger.info("File structure before mosaicing:")
+            # hdulist.info()
 
             gap = 90
             xshift = [0.0, +5.9, -2.1]
-            yshift = [0.0, -2.6,  0.4]
-            rotation = [0,0,0]
+            yshift = [0.0, -2.6, 0.4]
+            rotation = [0, 0, 0]
             hdulist = tiledata(hdulist, (gap, xshift, yshift, rotation))
             # #return
 
@@ -494,50 +494,45 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
             # hdulist.info()
             # logger.debug("done with mosaic")
 
-
     return hdulist
 
 
-
-
 #################################################################################
 #################################################################################
 #################################################################################
 
-def specred(rawdir, prodir, options, 
-            imreduce=True, specreduce=True, 
-            calfile=None, lamp='Ar', 
-            automethod='Matchlines', skysection=[800,1000], 
+def specred(rawdir, prodir, options,
+            imreduce=True, specreduce=True,
+            calfile=None, lamp='Ar',
+            automethod='Matchlines', skysection=[800, 1000],
             cleanup=True):
-
     print rawdir
     print prodir
 
     logger = logging.getLogger("SPECRED")
 
-    #get the name of the files
+    # get the name of the files
     # if (type(infile) == list):
     #     infile_list = infile
     # elif (type(infile) == str and os.path.isdir(infile)):
-    infile_list=glob.glob(rawdir+'*.fits')
-        
+    infile_list = glob.glob(rawdir + '*.fits')
 
-    #get the current date for the files
-    obsdate=os.path.basename(infile_list[0])[1:9]
+    # get the current date for the files
+    obsdate = os.path.basename(infile_list[0])[1:9]
     print obsdate
 
-    #set up some files that will be needed
-    logfile='spec'+obsdate+'.log'
-    flatimage='FLAT%s.fits' % (obsdate)
-    dbfile='spec%s.db' % obsdate
+    # set up some files that will be needed
+    logfile = 'spec' + obsdate + '.log'
+    flatimage = 'FLAT%s.fits' % (obsdate)
+    dbfile = 'spec%s.db' % obsdate
 
-    #create the observation log
+    # create the observation log
     # obs_dict=obslog(infile_list)
 
     # import pysalt.lib.saltsafeio as saltio
-    
+
     print infile_list
-                           
+
     #
     #
     # Now reduce all files, one by one
@@ -560,8 +555,8 @@ def specred(rawdir, prodir, options,
     #
     logger.info("Identifying frames and sorting by type (object/flat/arc)")
     obslog = {
-        'FLAT': [],
-        'ARC': [],
+        'FLAT':   [],
+        'ARC':    [],
         'OBJECT': [],
     }
 
@@ -571,20 +566,20 @@ def specred(rawdir, prodir, options,
             logger.info("Frame %s is not a valid RSS frame (instrument: %s)" % (
                 filename, hdulist[0].header['INSTRUME']))
             continue
-            
+
         obstype = hdulist[0].header['OBSTYPE']
         if (obstype in obslog):
             obslog[obstype].append(filename)
             logger.debug("Identifying %s as %s" % (filename, obstype))
         else:
             logger.info("No idea what to do with frame %s --> %s" % (filename, obstype))
-            
-    for type in obslog:
-        if (len(obslog[type]) > 0):
+
+    for obstype in obslog:
+        if (len(obslog[obstype]) > 0):
             logger.info("Found the following %ss:\n -- %s" % (
-                type, "\n -- ".join(obslog[type])))
+                obstype, "\n -- ".join(obslog[obstype])))
         else:
-            logger.info("No files of type %s found!" % (type))
+            logger.info("No files of type %s found!" % (obstype))
 
     #
     # Go through the list of files, find all flat-fields, and create a master flat field
@@ -598,7 +593,7 @@ def specred(rawdir, prodir, options,
     for idx, filename in enumerate(obslog['FLAT']):
         hdulist = fits.open(filename)
         if (hdulist[0].header['OBSTYPE'].find("FLAT") >= 0 and
-            hdulist[0].header['INSTRUME'] == "RSS"):
+                    hdulist[0].header['INSTRUME'] == "RSS"):
             #
             # This is a flat-field
             #
@@ -617,12 +612,12 @@ def specred(rawdir, prodir, options,
             if (not binning in flatfield_list[grating]):
                 flatfield_list[grating][binning] = {}
             if (not grating_tilt in flatfield_list[grating][binning]):
-                flatfield_list[grating][binning][grating_tilt] = {}    
+                flatfield_list[grating][binning][grating_tilt] = {}
             if (not grating_angle in flatfield_list[grating][binning][grating_tilt]):
-                flatfield_list[grating][binning][grating_tilt][grating_angle] = []   
+                flatfield_list[grating][binning][grating_tilt][grating_angle] = []
 
             flatfield_list[grating][binning][grating_tilt][grating_angle].append(filename)
-            
+
     for grating in flatfield_list:
         for binning in flatfield_list[grating]:
             for grating_tilt in flatfield_list[grating][binning]:
@@ -639,8 +634,8 @@ def specred(rawdir, prodir, options,
                         _, fb = os.path.split(filename)
                         single_flat = "flat_%s" % (fb)
 
-                        hdu = salt_prepdata(filename, 
-                                            badpixelimage=None, 
+                        hdu = salt_prepdata(filename,
+                                            badpixelimage=None,
                                             create_variance=True,
                                             clean_cosmics=False,
                                             mosaic=False,
@@ -656,12 +651,12 @@ def specred(rawdir, prodir, options,
                                 # out spectral slope. We can then divide the raw data by this 
                                 # median flat to isolate pixel-by-pixel variations
                                 filtered = scipy.ndimage.filters.median_filter(
-                                    input=ext.data, 
-                                    size=(1,25), 
-                                    footprint=None, 
-                                    output=None, 
-                                    mode='reflect', 
-                                    cval=0.0, 
+                                    input=ext.data,
+                                    size=(1, 25),
+                                    footprint=None,
+                                    output=None,
+                                    mode='reflect',
+                                    cval=0.0,
                                     origin=0)
                                 ext.data /= filtered
 
@@ -669,12 +664,12 @@ def specred(rawdir, prodir, options,
                                     flatfield_hdus[extid] = []
                                 flatfield_hdus[extid].append(ext.data)
 
-                        single_flat = "norm"+single_flat
+                        single_flat = "norm" + single_flat
                         pysalt.clobberfile(single_flat)
                         hdu.writeto(single_flat, clobber=True)
                         logger.info("Wrote normalized flatfield to %s" % (single_flat))
 
-                        if (first_flat == None):
+                        if (first_flat is None):
                             first_flat = hdulist
 
                     print first_flat
@@ -685,13 +680,13 @@ def specred(rawdir, prodir, options,
                     # Combine all flat-fields into a single master-flat
                     for extid in flatfield_hdus:
                         flatstack = flatfield_hdus[extid]
-                        #print "EXT",extid,"-->",flatstack
+                        # print "EXT",extid,"-->",flatstack
                         logger.info("Ext %d: %d flats" % (extid, len(flatstack)))
                         flatstack = numpy.array(flatstack)
                         print flatstack.shape
                         avg_flat = numpy.mean(flatstack, axis=0)
                         print "avg:", avg_flat.shape
-                        
+
                         first_flat[extid].data = avg_flat
 
                     masterflat_filename = "flat__%s_%s_%.3f_%.3f.fits" % (
@@ -699,10 +694,10 @@ def specred(rawdir, prodir, options,
                     pysalt.clobberfile(masterflat_filename)
                     first_flat.writeto(masterflat_filename, clobber=True)
 
-            # # hdu = salt_prepdata(filename, badpixelimage=None, create_variance=False, 
-            # #                     verbose=False)
-            # # flatfield_hdus.append(hdu)
-        
+                    # # hdu = salt_prepdata(filename, badpixelimage=None, create_variance=False,
+                    # #                     verbose=False)
+                    # # flatfield_hdus.append(hdu)
+
     #############################################################################
     #
     # Determine a wavelength solution from ARC frames, where available
@@ -710,8 +705,8 @@ def specred(rawdir, prodir, options,
     #############################################################################
 
     logger.info("Searching for a wavelength calibration from the ARC files")
-    skip_wavelength_cal_search = False #os.path.isfile(dbfile)
-    
+    skip_wavelength_cal_search = False  # os.path.isfile(dbfile)
+
     # Keep track of when the ARCs were taken, so we can pick the one closest 
     # in time to the science observation for data reduction
     arc_obstimes = numpy.ones((len(obslog['ARC']))) * -999.9
@@ -730,8 +725,8 @@ def specred(rawdir, prodir, options,
             rect_filename = "ARC-RECT_%s" % (fb)
 
             logger.info("Creating MEF  for frame %s --> %s" % (fb, arc_filename))
-            hdu = salt_prepdata(filename, 
-                                badpixelimage=None, 
+            hdu = salt_prepdata(filename,
+                                badpixelimage=None,
                                 create_variance=True,
                                 clean_cosmics=False,
                                 mosaic=False,
@@ -741,12 +736,12 @@ def specred(rawdir, prodir, options,
             arc_mef_list[idx] = arc_filename
 
             logger.info("Creating mosaic for frame %s --> %s" % (fb, arc_mosaic_filename))
-            hdu_mosaiced = salt_prepdata(filename, 
-                                badpixelimage=None, 
-                                create_variance=True,
-                                clean_cosmics=False,
-                                mosaic=True,
-                                verbose=False)
+            hdu_mosaiced = salt_prepdata(filename,
+                                         badpixelimage=None,
+                                         create_variance=True,
+                                         clean_cosmics=False,
+                                         mosaic=True,
+                                         verbose=False)
 
             #
             # Now we have a HDUList of the mosaiced ARC file, so 
@@ -766,7 +761,7 @@ def specred(rawdir, prodir, options,
             #
             # Now add some plotting here just to make sure the user is happy :-)
             #
-            plotfile = arc_mosaic_filename[:-5]+".png"
+            plotfile = arc_mosaic_filename[:-5] + ".png"
             wlcal.create_wl_calibration_plot(wls_data, hdu_mosaiced, plotfile)
 
             #
@@ -775,18 +770,18 @@ def specred(rawdir, prodir, options,
             #
             arc_region_file = "ARC_m_%s_traces.reg" % (fb[:-5])
             wls_2darc = traceline.compute_2d_wavelength_solution(
-                arc_filename=hdu_mosaiced, 
-                n_lines_to_trace=-15, #-50, # trace all lines with S/N > 50 
+                arc_filename=hdu_mosaiced,
+                n_lines_to_trace=-15,  # -50, # trace all lines with S/N > 50
                 fit_order=wlmap_fitorder,
                 output_wavelength_image="wl+image.fits",
                 debug=False,
                 arc_region_file=arc_region_file,
                 trace_every=0.05,
-                )
+            )
             wl_hdu = fits.ImageHDU(data=wls_2darc)
             wl_hdu.name = "WAVELENGTH"
             hdu_mosaiced.append(wl_hdu)
-            
+
             #
             # Now go ahead and extract the full 2-d sky
             #
@@ -796,11 +791,11 @@ def specred(rawdir, prodir, options,
                 wls_2darc,
                 sky_regions=arc_regions,
                 oversample_factor=1.0,
-                )
+            )
             simul_arc_hdu = fits.ImageHDU(data=arc2d)
             simul_arc_hdu.name = "SIMULATION"
             hdu_mosaiced.append(simul_arc_hdu)
-            
+
             pysalt.clobberfile(arc_mosaic_filename)
             hdu_mosaiced.writeto(arc_mosaic_filename, clobber=True)
             arc_mosaic_list[idx] = arc_mosaic_filename
@@ -827,12 +822,11 @@ def specred(rawdir, prodir, options,
 
             # logger.debug("Done with specrectify")
 
+    # return
 
-    #return
-
-    #with open("flatlist", "w") as picklefile:
+    # with open("flatlist", "w") as picklefile:
     #    pickle.dump(flatfield_list, picklefile)
-    #print "\nPICKLE done"*10
+    # print "\nPICKLE done"*10
 
     #############################################################################
     #
@@ -869,7 +863,7 @@ def specred(rawdir, prodir, options,
                     grating_tilts = numpy.array(flatfield_list[grating][binning].keys())
                     closest = numpy.argmin(numpy.fabs(grating_tilts - grating_tilt))
                     _grating_tilt = grating_tilts[closest]
-                    
+
                 if (grating_angle in flatfield_list[grating][binning][_grating_tilt]):
                     _grating_angle = grating_angle
                 else:
@@ -879,7 +873,7 @@ def specred(rawdir, prodir, options,
 
                 masterflat_filename = "flat__%s_%s_%.3f_%.3f.fits" % (
                     grating, binning, _grating_angle, _grating_tilt)
-                
+
             else:
                 masterflat_filename = None
         else:
@@ -889,22 +883,22 @@ def specred(rawdir, prodir, options,
 
         logger.info("FLATX: %s (%s, %f, %f, %s) = %s" % (
             str(masterflat_filename),
-            grating, grating_angle, grating_tilt, binning, 
+            grating, grating_angle, grating_tilt, binning,
             filename)
-        )
-        if (not masterflat_filename == None):
+                    )
+        if (not masterflat_filename is None):
             if (not os.path.isfile(masterflat_filename)):
                 masterflat_filename = None
 
         logger.info("Creating mosaic for frame %s --> %s" % (fb, mosaic_filename))
-        hdu = salt_prepdata(filename, 
-                            flatfield_frame = masterflat_filename,
-                            badpixelimage=None, 
-                            create_variance=True, 
-                            clean_cosmics=False, #True,
+        hdu = salt_prepdata(filename,
+                            flatfield_frame=masterflat_filename,
+                            badpixelimage=None,
+                            create_variance=True,
+                            clean_cosmics=False,  # True,
                             mosaic=True,
                             verbose=False,
-        )
+                            )
         pysalt.clobberfile(mosaic_filename)
         logger.info("Writing mosaiced OBJ file to %s" % (mosaic_filename))
         hdu.writeto(mosaic_filename, clobber=True)
@@ -915,28 +909,25 @@ def specred(rawdir, prodir, options,
         # Also create the image without cosmic ray rejection, and add it to the 
         # output file
         #
-        hdu_nocrj = salt_prepdata(filename, 
-                            flatfield_frame = masterflat_filename,
-                            badpixelimage=None, 
-                            create_variance=True, 
-                            clean_cosmics=False,
-                            mosaic=True,
-                            verbose=False,
-        )
+        hdu_nocrj = salt_prepdata(filename,
+                                  flatfield_frame=masterflat_filename,
+                                  badpixelimage=None,
+                                  create_variance=True,
+                                  clean_cosmics=False,
+                                  mosaic=True,
+                                  verbose=False,
+                                  )
         hdu_sci_nocrj = hdu_nocrj['SCI']
         hdu_sci_nocrj.name = 'SCI.NOCRJ'
         hdu.append(hdu_sci_nocrj)
-
-
 
         # Make backup of the image BEFORE sky subtraction
         # make sure to copy the actual data, not just create a duplicate reference
         for source_ext in ['SCI', 'SCI.NOCRJ']:
             presub_hdu = fits.ImageHDU(data=numpy.array(hdu['SCI'].data),
-                                         header=hdu['SCI'].header)
-            presub_hdu.name = source_ext+'.RAW'
+                                       header=hdu['SCI'].header)
+            presub_hdu.name = source_ext + '.RAW'
             hdu.append(presub_hdu)
-
 
         #
         # Find the ARC closest in time to this frame
@@ -955,8 +946,6 @@ def specred(rawdir, prodir, options,
         else:
             good_arc = good_arc_list[0]
             logger.info("Using ARC %s for wavelength calibration" % (good_arc))
-
-
 
         #
         # Use ARC to trace lines and compute a 2-D wavelength solution
@@ -986,7 +975,7 @@ def specred(rawdir, prodir, options,
         for i in range(n_params):
             wls_fit[i] = arc_hdu[0].header['WLSFIT_%d' % (i)]
             hdu[0].header['WLSFIT_%d' % (i)] = arc_hdu[0].header['WLSFIT_%d' % (i)]
-            
+
         hdu.append(fits.ImageHDU(data=wls_2d, name='WAVELENGTH'))
 
         fits.PrimaryHDU(data=img_data).writeto("img0.fits", clobber=True)
@@ -1001,7 +990,7 @@ def specred(rawdir, prodir, options,
             plot_filename = "%s_slitprofile.png" % (fb)
             skylines, skyline_list, intensity_profile = \
                 prep_science.extract_skyline_intensity_profile(
-                    hdulist=hdu, 
+                    hdulist=hdu,
                     data=numpy.array(hdu['SCI.RAW'].data),
                     wls=wls_fit,
                     plot_filename=plot_filename,
@@ -1009,15 +998,15 @@ def specred(rawdir, prodir, options,
             # Flatten the science frame using the line profile
             hdu.append(
                 fits.ImageHDU(
-                    data=numpy.array(hdu['SCI'].data), 
-                    header=hdu['SCI'].header, 
+                    data=numpy.array(hdu['SCI'].data),
+                    header=hdu['SCI'].header,
                     name="SCI.PREFLAT"
                 )
             )
             hdu.append(
                 fits.ImageHDU(
-                    data=numpy.array(hdu['SCI'].data/intensity_profile.reshape((-1,1))), 
-                    header=hdu['SCI'].header, 
+                    data=numpy.array(hdu['SCI'].data / intensity_profile.reshape((-1, 1))),
+                    header=hdu['SCI'].header,
                     name="SCI.POSTFLAT"
                 )
             )
@@ -1025,26 +1014,25 @@ def specred(rawdir, prodir, options,
             #
             # Mask out all regions with relative intensities below 0.1x max 
             #
-            stats = scipy.stats.scoreatpercentile(intensity_profile, [50, 16,84, 2.5,97.5])
+            stats = scipy.stats.scoreatpercentile(intensity_profile, [50, 16, 84, 2.5, 97.5])
             one_sigma = (stats[4] - stats[3]) / 4.
             median = stats[0]
-            bad_region = intensity_profile < median-2*one_sigma
+            bad_region = intensity_profile < median - 2 * one_sigma
             hdu['SCI'].data[bad_region] = numpy.NaN
             intensity_profile[bad_region] = numpy.NaN
 
-            hdu['SCI'].data /= intensity_profile.reshape((-1,1))
+            hdu['SCI'].data /= intensity_profile.reshape((-1, 1))
             logger.info("Slit-flattened SCI extension")
 
+            y = img_data / intensity_profile.reshape((-1, 1))
+            fits.PrimaryHDU(data=(y / img_data)).writeto("img1.fits", clobber=True)
 
-            y = img_data / intensity_profile.reshape((-1,1))
-            fits.PrimaryHDU(data=(y/img_data)).writeto("img1.fits", clobber=True)
-
-            #img_data /= intensity_profile.reshape((-1,1))
+            # img_data /= intensity_profile.reshape((-1,1))
 
         print "Adding xxx extension"
         hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
-                                   data=img_data,
-                                   name="XXX"))
+                                 data=img_data,
+                                 name="XXX"))
 
         # #
         # # Now go ahead and extract the full 2-d sky
@@ -1078,7 +1066,7 @@ def specred(rawdir, prodir, options,
         # Compute the optimized sky, using better-chosen spline basepoints 
         # to sample the sky-spectrum
         #
-        sky_regions = numpy.array([[300,500], [1400,1700]])
+        sky_regions = numpy.array([[300, 500], [1400, 1700]])
         logger.info("Preparing optimized sky-subtraction")
         ia = None
 
@@ -1100,9 +1088,9 @@ def specred(rawdir, prodir, options,
         # logger.info("Creating spatial flatfield from sky-line intensity profiles")
         # i, ia, im = skyline_intensity.find_skyline_profiles(hdu, skyline_list)
 
-    
+
         if (apply_skyline_intensity_flat):
-            skyline_flat = intensity_profile.reshape((-1,1))
+            skyline_flat = intensity_profile.reshape((-1, 1))
         else:
             skyline_flat = None
 
@@ -1115,24 +1103,24 @@ def specred(rawdir, prodir, options,
         #     skyline_flat=skyline_flat, #intensity_profile.reshape((-1,1)),
         # )
 
-            
+
 
         sky_2d, spline, extra = optimalskysub.optimal_sky_subtraction(
-            hdu, 
-            sky_regions=None, #sky_regions,
+            hdu,
+            sky_regions=None,  # sky_regions,
             N_points=600,
             iterate=False,
             skiplength=5,
-            skyline_flat=skyline_flat, #intensity_profile.reshape((-1,1)),
-            #select_region=numpy.array([[900,950]])
-            select_region=numpy.array([[600,640],[660,700]]),
+            skyline_flat=skyline_flat,  # intensity_profile.reshape((-1,1)),
+            # select_region=numpy.array([[900,950]])
+            select_region=numpy.array([[600, 640], [660, 700]]),
             wlmode=options.wlmode,
             debug_prefix="%s__" % (fb[:-5])
         )
         (x_eff, wl_map, medians, p_scale, p_skew, fm) = extra
 
         # recompute sky-2d based on the full wavelength map and the spline interpolator
-        #sky_2d = spline(wls_2d)
+        # sky_2d = spline(wls_2d)
 
         # bs = 100
         # maxbs = 10
@@ -1157,8 +1145,9 @@ def specred(rawdir, prodir, options,
 
         # sky_2d = sky2d_full
 
-        fits.PrimaryHDU(data=hdu['SCI.RAW'].data/skyline_flat).writeto("img_sky2d_input_skylineflat.fits", clobber=True)
-        fits.PrimaryHDU(data=hdu['SCI.RAW'].data/fm.reshape((-1,1))).writeto("img_sky2d_input_fm.fits", clobber=True)
+        fits.PrimaryHDU(data=hdu['SCI.RAW'].data / skyline_flat).writeto("img_sky2d_input_skylineflat.fits",
+                                                                         clobber=True)
+        fits.PrimaryHDU(data=hdu['SCI.RAW'].data / fm.reshape((-1, 1))).writeto("img_sky2d_input_fm.fits", clobber=True)
 
         fits.PrimaryHDU(data=sky_2d).writeto("img_sky2d.fits", clobber=True)
 
@@ -1194,11 +1183,11 @@ def specred(rawdir, prodir, options,
         elif (options.skyscaling == 's2d'):
 
             full2d, data, pf2, data2, spline2d = optscale.minimize_sky_residuals2_spline(
-                img=img_data, 
-                sky=sky_2d, 
-                wl=wl_map, 
+                img=img_data,
+                sky=sky_2d,
+                wl=wl_map,
                 bpm=hdu['BPM'].data,
-                vert_size=-25, 
+                vert_size=-25,
                 dl=-25)
             numpy.savetxt("new_scaling.dump", data)
             skyscaling2d = spline2d
@@ -1209,13 +1198,13 @@ def specred(rawdir, prodir, options,
             pass
 
             ret = optscale.minimize_sky_residuals2(
-                img=img_data, 
-                sky=sky_2d, 
-                wl=wl_map, 
+                img=img_data,
+                sky=sky_2d,
+                wl=wl_map,
                 bpm=hdu['BPM'].data,
-                vert_size=-25, 
+                vert_size=-25,
                 dl=-25)
-            if (ret != None):
+            if (ret is not None):
                 full2d, data, pf2, data2 = ret
                 numpy.savetxt("new_scaling.dump", data)
             else:
@@ -1227,7 +1216,6 @@ def specred(rawdir, prodir, options,
 
             opt_sky_scaling = full2d
             skyscaling2d = full2d
-
 
         # data, filtered, full2d = optscale.minimize_sky_residuals2(
         #     img=img_data, 
@@ -1245,7 +1233,6 @@ def specred(rawdir, prodir, options,
         #
         pass
 
-
         # skysub = obj_data - sky2d
         # ss_hdu = fits.ImageHDU(header=obj_hdulist['SCI.RAW'].header,
         #                          data=skysub)
@@ -1253,14 +1240,14 @@ def specred(rawdir, prodir, options,
         # obj_hdulist.append(ss_hdu)
 
         ss_hdu2 = fits.ImageHDU(header=hdu['SCI'].header,
-                                 data=(sky_2d * skyscaling2d))
+                                data=(sky_2d * skyscaling2d))
         # ss_hdu2 = fits.ImageHDU(header=hdu['SCI'].header,
         #                          data=(sky_2d * opt_sky_scaling))
         ss_hdu2.name = "SKYSUB.IMG"
         hdu.append(ss_hdu2)
 
         ss_hdu2 = fits.ImageHDU(header=hdu['SCI'].header,
-                                 data=(sky_2d))
+                                data=(sky_2d))
         ss_hdu2.name = "SKY.RAW"
         hdu.append(ss_hdu2)
 
@@ -1273,22 +1260,22 @@ def specred(rawdir, prodir, options,
                                  name="SKY.SCALE")
                    )
 
-        skysub_img = (img_data) - (sky_2d * skyscaling2d) #opt_sky_scaling)
+        skysub_img = (img_data) - (sky_2d * skyscaling2d)  # opt_sky_scaling)
         skysub_hdu = fits.ImageHDU(header=hdu['SCI'].header,
-                                     data=numpy.array(skysub_img),
-                                     name="SKYSUB.OPT")
+                                   data=numpy.array(skysub_img),
+                                   name="SKYSUB.OPT")
         hdu.append(skysub_hdu)
 
         #
         # Run cosmic ray rejection on the sky-line subtracted frame
         # Loop over all SCI extensions
         #
-        #median_sky = numpy.median(sky_2d * opt_sky_scaling)
+        # median_sky = numpy.median(sky_2d * opt_sky_scaling)
         median_sky = bottleneck.nanmedian(sky_2d * opt_sky_scaling)
         sigclip = 5.0
         sigfrac = 0.6
         objlim = 5.0
-        saturation_limit=65000
+        saturation_limit = 65000
         try:
             gain = 1.5 if (not 'GAIN' in hdu['SCI'].header) else hdu['SCI'].header['GAIN']
             readnoise = 3 if (not 'RDNOISE' in hdu['SCI'].header) else hdu['SCI'].header['RDNOISE']
@@ -1296,23 +1283,22 @@ def specred(rawdir, prodir, options,
             gain, readnoise = 1.3, 5
 
         crj = podi_cython.lacosmics(
-            numpy.array(skysub_img+median_sky), #.astype(numpy.float64), 
-            gain=gain, 
-            readnoise=readnoise, 
+            numpy.array(skysub_img + median_sky),  # .astype(numpy.float64),
+            gain=gain,
+            readnoise=readnoise,
             niter=3,
             sigclip=sigclip, sigfrac=sigfrac, objlim=objlim,
             saturation_limit=saturation_limit,
             verbose=False
         )
         cell_cleaned, cell_mask, cell_saturated = crj
-        
+
         hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
-                                 data=skysub_img+median_sky-cell_cleaned,
+                                 data=skysub_img + median_sky - cell_cleaned,
                                  name="COSMICS"))
 
-
         final_hdu = fits.ImageHDU(header=hdu['SCI'].header,
-                                  data=(cell_cleaned-median_sky),
+                                  data=(cell_cleaned - median_sky),
                                   name="SKYSUB.OPT")
         hdu.append(final_hdu)
 
@@ -1348,11 +1334,11 @@ def specred(rawdir, prodir, options,
         #             function='legendre',  order=3, inttype='interp', 
         #             w1=None, w2=None, dw=None, nw=None,
         #             blank=0.0, clobber=True, logfile=logfile, verbose=True)
-        
+
         # #
         # # Now we have a full 2-d spectrum, but still with emission lines
         # #
-        
+
         # #
         # # Next, find good regions with no source contamation
         # #
@@ -1381,7 +1367,7 @@ def specred(rawdir, prodir, options,
         #     hdu_rect['SCI'].data[skymask].astype(numpy.float64),
         #     axis=0)
         # print sky_lines.shape
-        
+
         # #
         # # Now subtract skylines
         # #
@@ -1389,11 +1375,8 @@ def specred(rawdir, prodir, options,
         # skysub_filename = "OBJ_skysub_%s" % (fb)
         # pysalt.clobberfile(skysub_filename)
         # hdu_rect.writeto(skysub_filename, clobber=True)
-        
+
     return
-
-            
-
 
     verbose = False
     for idx, filename in enumerate(obslog['FLAT']):
@@ -1402,10 +1385,10 @@ def specred(rawdir, prodir, options,
         dirname, filebase = os.path.split(filename)
         logger.info("basic reduction for frame %s (%s)" % (filename, filebase))
 
-        hdu = salt_prepdata(filename, badpixelimage=None, create_variance=False, 
+        hdu = salt_prepdata(filename, badpixelimage=None, create_variance=False,
                             verbose=False)
-        
-        out_filename = "prep_"+filebase
+
+        out_filename = "prep_" + filebase
         pysalt.clobberfile(out_filename)
         hdu.writeto(out_filename, clobber=True)
 
@@ -1479,339 +1462,337 @@ def specred(rawdir, prodir, options,
         # #
         # # flat field correct the data
         # #
-        
-      # flat_imgs=''
-      # for i in range(len(infile_list)):
-      #   if obs_dict['CCDTYPE'][i].count('FLAT'):
-      #      if flat_imgs: flat_imgs += ','
-      #      flat_imgs += 'xgbp'+os.path.basename(infile_list[i])
 
-      # if len(flat_imgs)!=0:
-      #    saltcombine(flat_imgs,flatimage, method='median', reject=None, mask=False,    \
-      #           weight=True, blank=0, scale='average', statsec='[200:300, 600:800]', lthresh=3,    \
-      #           hthresh=3, clobber=True, logfile=logfile, verbose=True)
-      #    saltillum(flatimage, flatimage, '', mbox=11, clobber=True, logfile=logfile, verbose=True)
+        # flat_imgs=''
+        # for i in range(len(infile_list)):
+        #   if obs_dict['CCDTYPE'][i].count('FLAT'):
+        #      if flat_imgs: flat_imgs += ','
+        #      flat_imgs += 'xgbp'+os.path.basename(infile_list[i])
 
-      #    saltflat('xgbpP*fits', '', 'f', flatimage, minflat=500, clobber=True, logfile=logfile, verbose=True)
-      # else:
-      #    flats=None
-      #    imfiles=glob.glob('cxgbpP*fits')
-      #    for f in imfiles:
-      #        shutil.copy(f, 'f'+f)
+        # if len(flat_imgs)!=0:
+        #    saltcombine(flat_imgs,flatimage, method='median', reject=None, mask=False,    \
+        #           weight=True, blank=0, scale='average', statsec='[200:300, 600:800]', lthresh=3,    \
+        #           hthresh=3, clobber=True, logfile=logfile, verbose=True)
+        #    saltillum(flatimage, flatimage, '', mbox=11, clobber=True, logfile=logfile, verbose=True)
 
-      # #mosaic the data
-      # #geomfile=iraf.osfn("pysalt$data/rss/RSSgeom.dat")
-      # geomfile=pysalt.get_data_filename("pysalt$data/rss/RSSgeom.dat")
-      # saltmosaic('fxgbpP*fits', '', 'm', geomfile, interp='linear', cleanup=True, geotran=True, clobber=True, logfile=logfile, verbose=True)
+        #    saltflat('xgbpP*fits', '', 'f', flatimage, minflat=500, clobber=True, logfile=logfile, verbose=True)
+        # else:
+        #    flats=None
+        #    imfiles=glob.glob('cxgbpP*fits')
+        #    for f in imfiles:
+        #        shutil.copy(f, 'f'+f)
+
+        # #mosaic the data
+        # #geomfile=iraf.osfn("pysalt$data/rss/RSSgeom.dat")
+        # geomfile=pysalt.get_data_filename("pysalt$data/rss/RSSgeom.dat")
+        # saltmosaic('fxgbpP*fits', '', 'm', geomfile, interp='linear', cleanup=True, geotran=True, clobber=True, logfile=logfile, verbose=True)
 
     return
 
     sys.exit(0)
 
-    if imreduce:   
-      #prepare the data
-      saltprepare(infiles, '', 'p', createvar=False, badpixelimage='', clobber=True, logfile=logfile, verbose=True)
+    if imreduce:
+        # prepare the data
+        saltprepare(infiles, '', 'p', createvar=False, badpixelimage='', clobber=True, logfile=logfile, verbose=True)
 
-      #bias subtract the data
-      saltbias('pP*fits', '', 'b', subover=True, trim=True, subbias=False, masterbias='',  
-              median=False, function='polynomial', order=5, rej_lo=3.0, rej_hi=5.0, 
-              niter=10, plotover=False, turbo=False, 
-              clobber=True, logfile=logfile, verbose=True)
+        # bias subtract the data
+        saltbias('pP*fits', '', 'b', subover=True, trim=True, subbias=False, masterbias='',
+                 median=False, function='polynomial', order=5, rej_lo=3.0, rej_hi=5.0,
+                 niter=10, plotover=False, turbo=False,
+                 clobber=True, logfile=logfile, verbose=True)
 
-      #gain correct the data
-      saltgain('bpP*fits', '', 'g', usedb=False, mult=True, clobber=True, logfile=logfile, verbose=True)
+        # gain correct the data
+        saltgain('bpP*fits', '', 'g', usedb=False, mult=True, clobber=True, logfile=logfile, verbose=True)
 
-      #cross talk correct the data
-      saltxtalk('gbpP*fits', '', 'x', xtalkfile = "", usedb=False, clobber=True, logfile=logfile, verbose=True)
+        # cross talk correct the data
+        saltxtalk('gbpP*fits', '', 'x', xtalkfile="", usedb=False, clobber=True, logfile=logfile, verbose=True)
 
-      #cosmic ray clean the data
-      #only clean the object data
-      for i in range(len(infile_list)):
-        if obs_dict['CCDTYPE'][i].count('OBJECT') and obs_dict['INSTRUME'][i].count('RSS'):
-          img='xgbp'+os.path.basename(infile_list[i])
-          saltcrclean(img, img, '', crtype='edge', thresh=5, mbox=11, bthresh=5.0,
-                flux_ratio=0.2, bbox=25, gain=1.0, rdnoise=5.0, fthresh=5.0, bfactor=2,
-                gbox=3, maxiter=5, multithread=True,  clobber=True, logfile=logfile, verbose=True)
- 
-      #flat field correct the data
-      flat_imgs=''
-      for i in range(len(infile_list)):
-        if obs_dict['CCDTYPE'][i].count('FLAT'):
-           if flat_imgs: flat_imgs += ','
-           flat_imgs += 'xgbp'+os.path.basename(infile_list[i])
+        # cosmic ray clean the data
+        # only clean the object data
+        for i in range(len(infile_list)):
+            if obs_dict['CCDTYPE'][i].count('OBJECT') and obs_dict['INSTRUME'][i].count('RSS'):
+                img = 'xgbp' + os.path.basename(infile_list[i])
+                saltcrclean(img, img, '', crtype='edge', thresh=5, mbox=11, bthresh=5.0,
+                            flux_ratio=0.2, bbox=25, gain=1.0, rdnoise=5.0, fthresh=5.0, bfactor=2,
+                            gbox=3, maxiter=5, multithread=True, clobber=True, logfile=logfile, verbose=True)
 
-      if len(flat_imgs)!=0:
-         saltcombine(flat_imgs,flatimage, method='median', reject=None, mask=False,    \
-                weight=True, blank=0, scale='average', statsec='[200:300, 600:800]', lthresh=3,    \
-                hthresh=3, clobber=True, logfile=logfile, verbose=True)
-         saltillum(flatimage, flatimage, '', mbox=11, clobber=True, logfile=logfile, verbose=True)
+        # flat field correct the data
+        flat_imgs = ''
+        for i in range(len(infile_list)):
+            if obs_dict['CCDTYPE'][i].count('FLAT'):
+                if flat_imgs: flat_imgs += ','
+                flat_imgs += 'xgbp' + os.path.basename(infile_list[i])
 
-         saltflat('xgbpP*fits', '', 'f', flatimage, minflat=500, clobber=True, logfile=logfile, verbose=True)
-      else:
-         flats=None
-         imfiles=glob.glob('cxgbpP*fits')
-         for f in imfiles:
-             shutil.copy(f, 'f'+f)
+        if len(flat_imgs) != 0:
+            saltcombine(flat_imgs, flatimage, method='median', reject=None, mask=False, \
+                        weight=True, blank=0, scale='average', statsec='[200:300, 600:800]', lthresh=3, \
+                        hthresh=3, clobber=True, logfile=logfile, verbose=True)
+            saltillum(flatimage, flatimage, '', mbox=11, clobber=True, logfile=logfile, verbose=True)
 
-      #mosaic the data
-      #geomfile=iraf.osfn("pysalt$data/rss/RSSgeom.dat")
-      geomfile=pysalt.get_data_filename("pysalt$data/rss/RSSgeom.dat")
-      saltmosaic('fxgbpP*fits', '', 'm', geomfile, interp='linear', cleanup=True, geotran=True, clobber=True, logfile=logfile, verbose=True)
+            saltflat('xgbpP*fits', '', 'f', flatimage, minflat=500, clobber=True, logfile=logfile, verbose=True)
+        else:
+            flats = None
+            imfiles = glob.glob('cxgbpP*fits')
+            for f in imfiles:
+                shutil.copy(f, 'f' + f)
 
-      #clean up the images
-      if cleanup:
-           for f in glob.glob('p*fits'): os.remove(f)
-           for f in glob.glob('bp*fits'): os.remove(f)
-           for f in glob.glob('gbp*fits'): os.remove(f)
-           for f in glob.glob('xgbp*fits'): os.remove(f)
-           for f in glob.glob('fxgbp*fits'): os.remove(f)
+        # mosaic the data
+        # geomfile=iraf.osfn("pysalt$data/rss/RSSgeom.dat")
+        geomfile = pysalt.get_data_filename("pysalt$data/rss/RSSgeom.dat")
+        saltmosaic('fxgbpP*fits', '', 'm', geomfile, interp='linear', cleanup=True, geotran=True, clobber=True,
+                   logfile=logfile, verbose=True)
 
+        # clean up the images
+        if cleanup:
+            for f in glob.glob('p*fits'): os.remove(f)
+            for f in glob.glob('bp*fits'): os.remove(f)
+            for f in glob.glob('gbp*fits'): os.remove(f)
+            for f in glob.glob('xgbp*fits'): os.remove(f)
+            for f in glob.glob('fxgbp*fits'): os.remove(f)
 
-    #set up the name of the images
+    # set up the name of the images
     if specreduce:
-       for i in range(len(infile_list)):
-           if obs_dict['OBJECT'][i].upper().strip()=='ARC':
-               lamp=obs_dict['LAMPID'][i].strip().replace(' ', '')
-               arcimage='mfxgbp'+os.path.basename(infile_list[i])
-               lampfile=pysalt.get_data_filename("pysalt$data/linelists/%s.txt" % lamp)
+        for i in range(len(infile_list)):
+            if obs_dict['OBJECT'][i].upper().strip() == 'ARC':
+                lamp = obs_dict['LAMPID'][i].strip().replace(' ', '')
+                arcimage = 'mfxgbp' + os.path.basename(infile_list[i])
+                lampfile = pysalt.get_data_filename("pysalt$data/linelists/%s.txt" % lamp)
 
-               specidentify(arcimage, lampfile, dbfile, guesstype='rss', 
-                  guessfile='', automethod=automethod,  function='legendre',  order=5, 
-                  rstep=100, rstart='middlerow', mdiff=10, thresh=3, niter=5, 
-                  inter=True, clobber=True, logfile=logfile, verbose=True)
+                specidentify(arcimage, lampfile, dbfile, guesstype='rss',
+                             guessfile='', automethod=automethod, function='legendre', order=5,
+                             rstep=100, rstart='middlerow', mdiff=10, thresh=3, niter=5,
+                             inter=True, clobber=True, logfile=logfile, verbose=True)
 
-               specrectify(arcimage, outimages='', outpref='x', solfile=dbfile, caltype='line', 
-                   function='legendre',  order=3, inttype='interp', w1=None, w2=None, dw=None, nw=None,
-                   blank=0.0, clobber=True, logfile=logfile, verbose=True)
-     
+                specrectify(arcimage, outimages='', outpref='x', solfile=dbfile, caltype='line',
+                            function='legendre', order=3, inttype='interp', w1=None, w2=None, dw=None, nw=None,
+                            blank=0.0, clobber=True, logfile=logfile, verbose=True)
 
-    objimages=''
+    objimages = ''
     for i in range(len(infile_list)):
-       if obs_dict['CCDTYPE'][i].count('OBJECT') and obs_dict['INSTRUME'][i].count('RSS'):
-          if objimages: objimages += ','
-          objimages+='mfxgbp'+os.path.basename(infile_list[i])
+        if obs_dict['CCDTYPE'][i].count('OBJECT') and obs_dict['INSTRUME'][i].count('RSS'):
+            if objimages: objimages += ','
+            objimages += 'mfxgbp' + os.path.basename(infile_list[i])
 
     if specreduce:
-      #run specidentify on the arc files
+        # run specidentify on the arc files
 
-      specrectify(objimages, outimages='', outpref='x', solfile=dbfile, caltype='line', 
-           function='legendre',  order=3, inttype='interp', w1=None, w2=None, dw=None, nw=None,
-           blank=0.0, clobber=True, logfile=logfile, verbose=True)
+        specrectify(objimages, outimages='', outpref='x', solfile=dbfile, caltype='line',
+                    function='legendre', order=3, inttype='interp', w1=None, w2=None, dw=None, nw=None,
+                    blank=0.0, clobber=True, logfile=logfile, verbose=True)
 
-
-    #create the spectra text files for all of our objects
-    spec_list=[]
+    # create the spectra text files for all of our objects
+    spec_list = []
     for img in objimages.split(','):
-       spec_list.extend(createspectra('x'+img, obsdate, smooth=False, skysection=skysection, clobber=True))
+        spec_list.extend(createspectra('x' + img, obsdate, smooth=False, skysection=skysection, clobber=True))
     print spec_list
- 
-    #determine the spectrophotometric standard
-    extfile=pysalt.get_data_filename('pysalt$data/site/suth_extinct.dat')
+
+    # determine the spectrophotometric standard
+    extfile = pysalt.get_data_filename('pysalt$data/site/suth_extinct.dat')
 
     for spec, am, et, pc in spec_list:
-        if pc=='CAL_SPST':
-           stdstar=spec.split('.')[0]
-           print stdstar, am, et
-           stdfile=pysalt.get_data_filename('pysalt$data/standards/spectroscopic/m%s.dat' % stdstar.lower().replace('-', '_'))
-           print stdfile
-           ofile=spec.replace('txt', 'sens')
-           calfile=ofile #assumes only one observations of a SP standard
-           specsens(spec, ofile, stdfile, extfile, airmass=am, exptime=et,
-                stdzp=3.68e-20, function='polynomial', order=3, thresh=3, niter=5,
-                clobber=True, logfile='salt.log',verbose=True)
-    
+        if pc == 'CAL_SPST':
+            stdstar = spec.split('.')[0]
+            print stdstar, am, et
+            stdfile = pysalt.get_data_filename(
+                'pysalt$data/standards/spectroscopic/m%s.dat' % stdstar.lower().replace('-', '_'))
+            print stdfile
+            ofile = spec.replace('txt', 'sens')
+            calfile = ofile  # assumes only one observations of a SP standard
+            specsens(spec, ofile, stdfile, extfile, airmass=am, exptime=et,
+                     stdzp=3.68e-20, function='polynomial', order=3, thresh=3, niter=5,
+                     clobber=True, logfile='salt.log', verbose=True)
 
     for spec, am, et, pc in spec_list:
-        if pc!='CAL_SPST':
-           ofile=spec.replace('txt', 'spec')
-           speccal(spec, ofile, calfile, extfile, airmass=am, exptime=et, 
-                  clobber=True, logfile='salt.log',verbose=True)
-           #clean up the spectra for bad pixels
-           cleanspectra(ofile)
+        if pc != 'CAL_SPST':
+            ofile = spec.replace('txt', 'spec')
+            speccal(spec, ofile, calfile, extfile, airmass=am, exptime=et,
+                    clobber=True, logfile='salt.log', verbose=True)
+            # clean up the spectra for bad pixels
+            cleanspectra(ofile)
 
 
 def speccombine(spec_list, obsdate):
-   """Combine N spectra"""
+    """Combine N spectra"""
 
-   w1,f1, e1=numpy.loadtxt(spec_list[0], usecols=(0,1,2), unpack=True)
+    w1, f1, e1 = numpy.loadtxt(spec_list[0], usecols=(0, 1, 2), unpack=True)
 
-   w=w1
-   f=1.0*f1
-   e=e1**2
+    w = w1
+    f = 1.0 * f1
+    e = e1 ** 2
 
-   for sfile in spec_list[1:]:
-      w2,f2, e2=numpy.loadtxt(sfile, usecols=(0,1,2), unpack=True)
-      if2=numpy.interp(w1, w2, f2)
-      ie2=numpy.interp(w1, w2, e2)
-      f2=f2*numpy.median(f1/if2)
-      f+=if2
-      e+=ie2**2
+    for sfile in spec_list[1:]:
+        w2, f2, e2 = numpy.loadtxt(sfile, usecols=(0, 1, 2), unpack=True)
+        if2 = numpy.interp(w1, w2, f2)
+        ie2 = numpy.interp(w1, w2, e2)
+        f2 = f2 * numpy.median(f1 / if2)
+        f += if2
+        e += ie2 ** 2
 
-   f=f/len(spec_list)
-   e=e**0.5/len(spec_list)
+    f = f / len(spec_list)
+    e = e ** 0.5 / len(spec_list)
 
-   sfile='%s.spec' % obsdate
-   fout=open(sfile, 'w')
-   for i in range(len(w)):
-           fout.write('%f %e %e\n' % (w[i], f[i], e[i]))
-   fout.close()
+    sfile = '%s.spec' % obsdate
+    fout = open(sfile, 'w')
+    for i in range(len(w)):
+        fout.write('%f %e %e\n' % (w[i], f[i], e[i]))
+    fout.close()
 
 
 def cleanspectra(sfile, grow=6):
     """Remove possible bad pixels"""
     try:
-        w,f,e=numpy.loadtxt(sfile, usecols=(0,1,2), unpack=True)
+        w, f, e = numpy.loadtxt(sfile, usecols=(0, 1, 2), unpack=True)
     except:
-        w,f=numpy.loadtxt(sfile, usecols=(0,1), unpack=True)
-        e=f*0.0+f.std()
-    
-    m=(f*0.0)+1
-    for i in range(len(m)):
-        if f[i]<=0.0:
-           x1=int(i-grow)
-           x2=int(i+grow)
-           m[x1:x2]=0
-    m[0]=0
-    m[-1]=0
+        w, f = numpy.loadtxt(sfile, usecols=(0, 1), unpack=True)
+        e = f * 0.0 + f.std()
 
-  
-    fout=open(sfile, 'w')
+    m = (f * 0.0) + 1
+    for i in range(len(m)):
+        if f[i] <= 0.0:
+            x1 = int(i - grow)
+            x2 = int(i + grow)
+            m[x1:x2] = 0
+    m[0] = 0
+    m[-1] = 0
+
+    fout = open(sfile, 'w')
     for i in range(len(w)):
         if m[i]:
-           fout.write('%f %e %e\n' % (w[i], f[i], e[i]))
+            fout.write('%f %e %e\n' % (w[i], f[i], e[i]))
     fout.close()
- 
+
+
 def normalizespectra(sfile, compfile):
     """Normalize spectra by the comparison object"""
 
-    #read in the spectra
-    w,f,e=numpy.loadtxt(sfile, usecols=(0,1,2), unpack=True)
-   
-    #read in the comparison spectra
-    cfile=sfile.replace('MCG-6-30-15', 'COMP')
+    # read in the spectra
+    w, f, e = numpy.loadtxt(sfile, usecols=(0, 1, 2), unpack=True)
+
+    # read in the comparison spectra
+    cfile = sfile.replace('MCG-6-30-15', 'COMP')
     print cfile
-    wc,fc,ec=numpy.loadtxt(cfile, usecols=(0,1,2), unpack=True)
+    wc, fc, ec = numpy.loadtxt(cfile, usecols=(0, 1, 2), unpack=True)
 
-    #read in the base star
-    ws,fs,es=numpy.loadtxt(compfile, usecols=(0,1,2), unpack=True)
- 
-    #calcualte the normalization
-    ifc=numpy.interp(ws, wc, fc) 
-    norm=numpy.median(fs/ifc)
+    # read in the base star
+    ws, fs, es = numpy.loadtxt(compfile, usecols=(0, 1, 2), unpack=True)
+
+    # calcualte the normalization
+    ifc = numpy.interp(ws, wc, fc)
+    norm = numpy.median(fs / ifc)
     print norm
-    f=norm*f
-    e=norm*e
+    f = norm * f
+    e = norm * e
 
-    #write out the result
-    fout=open(sfile, 'w')
+    # write out the result
+    fout = open(sfile, 'w')
     for i in range(len(w)):
         fout.write('%f %e %e\n' % (w[i], f[i], e[i]))
     fout.close()
 
-    #copy
+    # copy
 
-    
- 
 
-def createspectra(img, obsdate, minsize=5, thresh=3, skysection=[800,1000], smooth=False, maskzeros=True, clobber=True):
+def createspectra(img, obsdate, minsize=5, thresh=3, skysection=[800, 1000], smooth=False, maskzeros=True,
+                  clobber=True):
     """Create a list of spectra for each of the objects in the images"""
-    #okay we need to identify the objects for extraction and identify the regions for sky extraction
-    #first find the objects in the image
-    hdu=fits.open(img)
-    target=hdu[0].header['OBJECT']
-    propcode=hdu[0].header['PROPID']
-    airmass=hdu[0].header['AIRMASS']
-    exptime=hdu[0].header['EXPTIME']
+    # okay we need to identify the objects for extraction and identify the regions for sky extraction
+    # first find the objects in the image
+    hdu = fits.open(img)
+    target = hdu[0].header['OBJECT']
+    propcode = hdu[0].header['PROPID']
+    airmass = hdu[0].header['AIRMASS']
+    exptime = hdu[0].header['EXPTIME']
 
     if smooth:
-       data=smooth_data(hdu[1].data)
+        data = smooth_data(hdu[1].data)
     else:
-       data=hdu[1].data
+        data = hdu[1].data
 
-    #replace the zeros with the average from the frame
+    # replace the zeros with the average from the frame
     if maskzeros:
-       mean,std=iterstat(data[data>0])
-       rdata=numpy.random.normal(mean, std, size=data.shape)
-       print mean, std
-       data[data<=0]=rdata[data<=0]
+        mean, std = iterstat(data[data > 0])
+        rdata = numpy.random.normal(mean, std, size=data.shape)
+        print mean, std
+        data[data <= 0] = rdata[data <= 0]
 
-    #find the sections in the images
-    section=findobj.findObjects(data, method='median', specaxis=1, minsize=minsize, thresh=thresh, niter=5)
+    # find the sections in the images
+    section = findobj.findObjects(data, method='median', specaxis=1, minsize=minsize, thresh=thresh, niter=5)
     print section
 
-    #use a region near the center to create they sky
-    skysection=findskysection(section, skysection)
+    # use a region near the center to create they sky
+    skysection = findskysection(section, skysection)
     print skysection
- 
-    #sky subtract the frames
-    shdu=skysubtract(hdu, method='normal', section=skysection)
-    if os.path.isfile('s'+img): os.remove('s'+img)
-    shdu.writeto('s'+img)
- 
-    spec_list=[]
-    #extract the spectra
-    #extract the comparison spectrum
-    section=findobj.findObjects(shdu[1].data, method='median', specaxis=1, minsize=minsize, thresh=thresh, niter=5)
+
+    # sky subtract the frames
+    shdu = skysubtract(hdu, method='normal', section=skysection)
+    if os.path.isfile('s' + img): os.remove('s' + img)
+    shdu.writeto('s' + img)
+
+    spec_list = []
+    # extract the spectra
+    # extract the comparison spectrum
+    section = findobj.findObjects(shdu[1].data, method='median', specaxis=1, minsize=minsize, thresh=thresh, niter=5)
     print section
     for j in range(len(section)):
-        ap_list=extract(shdu, method='normal', section=[section[j]], minsize=minsize, thresh=thresh, convert=True)
-        ofile='%s.%s_%i_%i.txt' % (target, obsdate, extract_number(img), j)
+        ap_list = extract(shdu, method='normal', section=[section[j]], minsize=minsize, thresh=thresh, convert=True)
+        ofile = '%s.%s_%i_%i.txt' % (target, obsdate, extract_number(img), j)
         write_extract(ofile, [ap_list[0]], outformat='ascii', clobber=clobber)
         spec_list.append([ofile, airmass, exptime, propcode])
 
     return spec_list
 
+
 def smooth_data(data, mbox=25):
-    mdata=median_filter(data, size=(mbox, mbox))
-    return data-mdata
+    mdata = median_filter(data, size=(mbox, mbox))
+    return data - mdata
+
 
 def find_section(section, y):
     """Find the section closest to y"""
-    best_i=-1
-    dist=1e5
+    best_i = -1
+    dist = 1e5
     for i in range(len(section)):
-        d=min(abs(section[i][0]-y), abs(section[i][1]-y))
+        d = min(abs(section[i][0] - y), abs(section[i][1] - y))
         if d < dist:
-           best_i=i
-           dist=d
+            best_i = i
+            dist = d
     return best_i
+
 
 def extract_number(img):
     """Get the image number only"""
-    img=img.split('.fits')
-    nimg=int(img[0][-4:])
+    img = img.split('.fits')
+    nimg = int(img[0][-4:])
     return nimg
 
+
 def iterstat(data, thresh=3, niter=5):
-    mean=data.mean()
-    std=data.std()
+    mean = data.mean()
+    std = data.std()
     for i in range(niter):
-        mask=(abs(data-mean)<std*thresh)
-        mean=data[mask].mean()
-        std=data[mask].std()
+        mask = (abs(data - mean) < std * thresh)
+        mean = data[mask].mean()
+        std = data[mask].std()
     return mean, std
 
-    
 
-def findskysection(section, skysection=[800,900], skylimit=100):
+def findskysection(section, skysection=[800, 900], skylimit=100):
     """Look through the section lists and determine a section to measure the sky in
 
        It should be as close as possible to the center and about 200 pixels wide
     """
-    #check to make sure it doesn't overlap any existing spectra
-    #and adjust if necessary
+    # check to make sure it doesn't overlap any existing spectra
+    # and adjust if necessary
     for y1, y2 in section:
-        if -30< (skysection[1]-y1)<0:
-           skysection[1]=y1-30
-        if 0< (skysection[0]-y2)<30:
-           skysection[0]=y2+30
-    if skysection[1]-skysection[0] < skylimit: print "WARNING SMALL SKY SECTION"
+        if -30 < (skysection[1] - y1) < 0:
+            skysection[1] = y1 - 30
+        if 0 < (skysection[0] - y2) < 30:
+            skysection[0] = y2 + 30
+    if skysection[1] - skysection[0] < skylimit: print "WARNING SMALL SKY SECTION"
     return skysection
-    
 
 
-if __name__=='__main__':
-
+if __name__ == '__main__':
     logger = pysalt.mp_logging.setup_logging()
 
     parser = OptionParser()
@@ -1822,12 +1803,12 @@ if __name__=='__main__':
                       help="How to scale the sky spectrum (none,s2d,p2d)",
                       default="none")
     (options, cmdline_args) = parser.parse_args()
-    
+
     print options
     print cmdline_args
 
-    rawdir=cmdline_args[0]
-    prodir=os.path.curdir+'/'
+    rawdir = cmdline_args[0]
+    prodir = os.path.curdir + '/'
     specred(rawdir, prodir, options)
 
     pysalt.mp_logging.shutdown_logging(logger)
