@@ -195,12 +195,12 @@ def optimal_sky_subtraction(obj_hdulist,
 
     import time
     time.sleep(1)
-    #print '\n'*5, 'img_data\n\n\n', img_data.shape, "\n", img_data, '\n'*5
-    # if (img_data is None):
-    obj_data = obj_hdulist['SCI.RAW'].data #/ fm.reshape((-1,1))
-    print "obj_data:", obj_data.shape
-    # else:
-    #obj_data = img_data.copy()
+    print '\n'*5, 'img_data\n\n\n', image_data.shape, "\n", image_data, '\n'*5
+    if (image_data is None):
+        obj_data = obj_hdulist['SCI.RAW'].data #/ fm.reshape((-1,1))
+        print "obj_data:", obj_data.shape
+    else:
+        obj_data = image_data.copy()
     #obj_wl   = wlmap_model #wl_map #obj_hdulist['WAVELENGTH'].data
 
     x_eff, wl_map, medians, p_scale, p_skew, fm = \
@@ -756,12 +756,23 @@ def optimal_sky_subtraction(obj_hdulist,
         # therefore we need to do the integration for each pixel by hand
         t0 = time.time()
         sky2d = numpy.array([spline_iter.integral(a,b) for a,b in zip(from_wl.ravel(),to_wl.ravel())]).reshape(obj_wl.shape)
+
+        #
+        # Important !!!
+        #
+        # the integral routine somehow does some normalization - therefore scaling only works
+        # if we divide the final map by the dispersion, i.e. the width of each pixel integral
+        # (see prototype code in fiddle_skyspline.py)
+        #
+        wl_width = to_wl - from_wl
+        sky2d /= wl_width
+
         t1 = time.time()
         # print "integration took %f seconds" % (t1-t0)
         fits.PrimaryHDU(data=sky2d).writeto(debug_prefix+"IntegSky.fits", clobber=True)
-        logger.debug("2d-sky epctrum written to IntegSky.fits")
+        logger.debug("2d-sky spectrum written to IntegSky.fits")
 
-        logger.info("Integration took %.3f seconds" % (t1-t0))
+        logger.debug("Integration took %.3f seconds" % (t1-t0))
 
         fits.PrimaryHDU(data=from_wl).writeto(debug_prefix+"IntegSky_from.fits", clobber=True)
         fits.PrimaryHDU(data=to_wl).writeto(debug_prefix+"IntegSky_to.fits", clobber=True)

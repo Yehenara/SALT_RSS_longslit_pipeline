@@ -96,7 +96,7 @@ import skyline_intensity
 import prep_science
 import podi_cython
 import optscale
-
+import fiddle_slitflat2
 # this is just temporary to make debugging easier
 import spline_pickle_test
 
@@ -1034,6 +1034,16 @@ def specred(rawdir, prodir, options,
                                  data=img_data,
                                  name="XXX"))
 
+        #
+        # Compute a full-frame 2-D flat-field.
+        # With this flat-field we can extract a better sky spectrum, and later improve the sky-subtraction
+        #
+        vph_flatfield, vph_flat_interpol = fiddle_slitflat2.create_2d_flatfield_from_sky(wls_2d, img_data)
+        flattened_img = img_data / vph_flatfield
+        logger.info("Flattened image: %s" % (str(flattened_img.shape)))
+
+
+
         # #
         # # Now go ahead and extract the full 2-d sky
         # #
@@ -1113,9 +1123,10 @@ def specred(rawdir, prodir, options,
             skiplength=5,
             skyline_flat=skyline_flat,  # intensity_profile.reshape((-1,1)),
             # select_region=numpy.array([[900,950]])
-            select_region=numpy.array([[600, 640], [660, 700]]),
+            # select_region=numpy.array([[600, 640], [660, 700]]),
             wlmode=options.wlmode,
-            debug_prefix="%s__" % (fb[:-5])
+            debug_prefix="%s__" % (fb[:-5]),
+            image_data=flattened_img,
         )
         (x_eff, wl_map, medians, p_scale, p_skew, fm) = extra
 
@@ -1150,6 +1161,10 @@ def specred(rawdir, prodir, options,
         fits.PrimaryHDU(data=hdu['SCI.RAW'].data / fm.reshape((-1, 1))).writeto("img_sky2d_input_fm.fits", clobber=True)
 
         fits.PrimaryHDU(data=sky_2d).writeto("img_sky2d.fits", clobber=True)
+
+        fits.PrimaryHDU(data=(sky_2d*vph_flatfield)).writeto("img_sky2d_x_vphflat.fits", clobber=True)
+
+        fits.PrimaryHDU(data=(img_data - (sky_2d*vph_flatfield))).writeto("img_vphflat_skysub.fits", clobber=True)
 
         #
         # Add here:
@@ -1217,6 +1232,10 @@ def specred(rawdir, prodir, options,
             opt_sky_scaling = full2d
             skyscaling2d = full2d
 
+        else:
+
+            skyscaling2d = vph_flatfield
+
         # data, filtered, full2d = optscale.minimize_sky_residuals2(
         #     img=img_data, 
         #     sky=sky_2d, 
@@ -1240,15 +1259,16 @@ def specred(rawdir, prodir, options,
         # obj_hdulist.append(ss_hdu)
 
         ss_hdu2 = fits.ImageHDU(header=hdu['SCI'].header,
-                                data=(sky_2d * skyscaling2d))
+                                data=(sky_2d * skyscaling2d),
+                                name="SKYSUB.IMG")
         # ss_hdu2 = fits.ImageHDU(header=hdu['SCI'].header,
         #                          data=(sky_2d * opt_sky_scaling))
-        ss_hdu2.name = "SKYSUB.IMG"
+        #ss_hdu2.name = "SKYSUB.IMG"
         hdu.append(ss_hdu2)
 
         ss_hdu2 = fits.ImageHDU(header=hdu['SCI'].header,
-                                data=(sky_2d))
-        ss_hdu2.name = "SKY.RAW"
+                                data=(sky_2d),
+                                name="SKY.RAW")
         hdu.append(ss_hdu2)
 
         hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
@@ -1798,7 +1818,7 @@ if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option("-w", "--wl", dest="wlmode",
                       help="How to create wavelength map (arc/sky/model)",
-                      default="arc")
+                      default="sky")
     parser.add_option("-s", "--scale", dest="skyscaling",
                       help="How to scale the sky spectrum (none,s2d,p2d)",
                       default="none")
