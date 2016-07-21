@@ -5,6 +5,7 @@ import sys, numpy, scipy, pyfits
 import scipy.ndimage
 from fiddle_slitflat import compute_profile
 import pickle
+import logging
 
 import itertools
 def polyfit2dx(x, y, z, order=[3,3], ):
@@ -42,8 +43,9 @@ def polyval2dx(x, y, m, order=[3,3]):
 from optscale import polyfit2d, polyval2d
 
 
-def create_2d_flatfield_from_sky(wl, img):
+def create_2d_flatfield_from_sky(wl, img, reuse_profile=None):
 
+    logger = logging.getLogger("Create2dVPHFlat")
 
     n_wl_chunks = 60
     wl_min = numpy.min(wl)
@@ -53,7 +55,7 @@ def create_2d_flatfield_from_sky(wl, img):
 
     wl_centers = numpy.linspace(wl_min+0.5*wl_steps, wl_max-0.5*wl_steps, num=n_wl_chunks)
 
-    print wl_centers, wl_centers.shape
+    # print wl_centers, wl_centers.shape
 
     profiles = numpy.empty((wl.shape[0], wl_centers.shape[0]))
     profiles[:,:] = numpy.NaN
@@ -65,13 +67,13 @@ def create_2d_flatfield_from_sky(wl, img):
     profiles_sparse = numpy.empty((sparse_y.shape[0], wl_centers.shape[0]))
     profiles_sparse[:, :] = numpy.NaN
 
-    if (len(sys.argv) > 2 and sys.argv[2] == "reuse"):
-        with open("profiles_sparse", "rb") as pf:
+    if (reuse_profile is not None and os.path.isfile(reuse_profile)):
+        with open(reuse_profile, "rb") as pf:
             (profiles, profiles_sparse) = pickle.load(pf)
 
     else:
         for i_wl, cwl in enumerate(wl_centers):
-            print i_wl, cwl
+            logger.debug("Extracting profile %d for wl %f +/- %f" % (i_wl+1, cwl, wl_steps))
 
             prof, poly = compute_profile(
                 wl=wl,
@@ -82,6 +84,7 @@ def create_2d_flatfield_from_sky(wl, img):
                 polyorder=5)
 
             if (prof == None):
+                logger.debug("No data found for %f +/- %f" % (cwl, wl_steps))
                 continue
 
             #print prof.shape
@@ -108,11 +111,12 @@ def create_2d_flatfield_from_sky(wl, img):
     #
     # Now fit a 2-d polynomial to the sparse grid of scaling factors
     #
+    logger.info("Fitting 2-D flat-field profile")
     wl_x2d = wl_centers.reshape((1,-1)).repeat(ny, axis=0)
     y_y2d = sparse_y.reshape((-1,1)).repeat(wl_centers.shape[0], axis=1)
-    print wl_x2d.shape, y_y2d.shape
-    print wl_x2d
-    print y_y2d
+    # print wl_x2d.shape, y_y2d.shape
+    # print wl_x2d
+    # print y_y2d
 
     # mask out all pixels with NaNs
     good_data = numpy.isfinite(profiles_sparse)
@@ -123,8 +127,8 @@ def create_2d_flatfield_from_sky(wl, img):
     fit_residuals = [pyfits.PrimaryHDU()]
     order = [1, 5]
     for final_iteration in range(10):
-        print "iteration %d - %d good data points of %d" % (final_iteration+1,  numpy.sum(good_data), profiles_sparse.size)
-        print profiles_sparse.shape
+        logger.debug("iteration %d - %d good data points of %d" % (final_iteration+1,  numpy.sum(good_data), profiles_sparse.size))
+        # print profiles_sparse.shape
 
         # poly2d = polyfit2d(x=wl_x2d[good_data], y=y_y2d[good_data], z=profiles_sparse[good_data], order=5)
         # fit2d = polyval2d(x=wl_x2d, y=y_y2d, m=poly2d)
@@ -142,7 +146,7 @@ def create_2d_flatfield_from_sky(wl, img):
 
         fit2d = interpol(x=wl_x2d, y=y_y2d, grid=False)
 
-        print fit2d.shape
+        # print fit2d.shape
         fit_steps.append(pyfits.ImageHDU(data=fit2d))
 
         residuals = profiles_sparse - fit2d
@@ -155,7 +159,7 @@ def create_2d_flatfield_from_sky(wl, img):
 
         fit_residuals.append(pyfits.ImageHDU(data=residuals.copy()))
 
-        print _median, _sigma
+        logger.debug("Iteration %d: median/sigma = %f / %f" % (final_iteration+1, _median, _sigma))
         residuals[~good_data] = numpy.NaN
         #fit_residuals.append(pyfits.ImageHDU(data=residuals))
 
@@ -167,13 +171,15 @@ def create_2d_flatfield_from_sky(wl, img):
     #
     # Now compute the full resolution 2-d frame from the best-fit polynomial
     #
-    print("computing full-resolution scaling frame")
+    logger.info("computing full-resolution scaling frame")
     full_y, _ = numpy.indices(img.shape)
     # fullres2d = polyval2dx(x=wl, y=full_y, m=poly2d, order=order)
     fullres2d = interpol(x=wl, y=full_y, grid=False)
     pyfits.PrimaryHDU(data=fullres2d).writeto("fiddle_slitflatnorm_fullres2d.fits", clobber=True)
 
     pyfits.PrimaryHDU(data=(img/fullres2d)).writeto("fiddle_slitflatnorm_fullresimg2d.fits", clobber=True)
+
+    return fullres2d, interpol
 
 if __name__ == "__main__":
 
@@ -183,5 +189,9 @@ if __name__ == "__main__":
 
     wl = hdu['WAVELENGTH'].data
     img = hdu['SCI.RAW'].data
+
+    reuse_profile = None
+    if (len(sys.argv) > 2 and sys.argv[2] == "reuse"):
+        reuse_profile = "profiles_sparse"
 
     create_2d_flatfield_from_sky(wl, img)
