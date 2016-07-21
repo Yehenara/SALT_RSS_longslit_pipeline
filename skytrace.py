@@ -416,12 +416,12 @@ def create_wlmap_from_skylines(hdulist):
     #
     # Compute full 2-d map of effective X positions
     #
-    logger.info("Computing full 2-D x-eff map")
+    logger.debug("Computing full 2-D effective-X map")
     y,x = numpy.indices(imgdata.shape)
 
     #x_eff = x + x*(p_scale[0]*mc_spline(y) + p_skew[0]*y) + p_scale[1] + p_skew[1]*y
-    print p_scale
-    print p_skew
+    print "best-fit curvature scaling", p_scale
+    print "best-fit curvature skew:", p_skew
 
     x_eff = x
     for iteration in range(3):
