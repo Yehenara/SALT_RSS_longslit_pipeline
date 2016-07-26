@@ -700,7 +700,9 @@ def compute_2d_wavelength_solution(arc_filename,
                                    arc_region_file=None,
                                    return_slitprofile=False,
                                    trace_every=None,
-                                   min_line_separation=0.03):
+                                   min_line_separation=0.03,
+                                   wls_data=None
+                                   ):
 
     if (type(arc_filename) == str and os.path.isfile(arc_filename)):
         # We received a filename as parameter
@@ -719,7 +721,9 @@ def compute_2d_wavelength_solution(arc_filename,
 
     logger.info("Attempting to find wavelength solution")
 
-    if (debug and False):
+    if (wls_data is not None):
+        pass
+    elif (debug and False):
         pickle_file = "traceline.pickle"
         try:
             wls_data = pickle.load(open(pickle_file, "rb"))
@@ -733,12 +737,12 @@ def compute_2d_wavelength_solution(arc_filename,
 
     #print wls_data
 
-    logger.info("Continuing with tracing lines!")
+    logger.debug("Continuing with tracing lines!")
     
     # Now pick the strongest line from the results
     arclines = wls_data['linelist_arc']
     max_s2n = numpy.argmax(arclines[:,wlcal.lineinfo_colidx['S2N']])
-    logger.info("Strongest line detected has S/N = %8.2f" % (
+    logger.debug("Strongest line detected has S/N = %8.2f" % (
             arclines[max_s2n,wlcal.lineinfo_colidx['S2N']]))
 
     #
@@ -746,7 +750,7 @@ def compute_2d_wavelength_solution(arc_filename,
     # in slit direction (vertical, along Y axis) to make arcs roughly the same 
     # brightness along their entire length
     #
-    logger.info("Creating slit profile for normalization")
+    logger.debug("Creating slit profile for normalization")
     slitprofile_fit, mask, slitprofile = find_slit_profile(hdulist, arc_filename, source_region=None)
     #print "SLITPROFILE:", slitprofile.shape, hdulist['SCI'].data.shape
     if (debug): numpy.savetxt("slitprofile.dump", slitprofile)
@@ -768,7 +772,7 @@ def compute_2d_wavelength_solution(arc_filename,
     binx, biny = pysalt.get_binning(hdulist)
 
     gauss_width = 8./binx
-    logger.info("Applying %.1f pixel gauss filter in spectral dir" % (gauss_width))
+    logger.debug("Applying %.1f pixel gauss filter in spectral dir" % (gauss_width))
     fitsdata_gf = scipy.ndimage.filters.gaussian_filter(fitsdata, (gauss_width,0), 
                                           mode='constant', cval=0,
 
