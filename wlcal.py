@@ -634,9 +634,11 @@ def find_wavelength_solution(filename, line):
         logger.error("Invalid input, needs to be either HDUList or string, but found %s" % (str(type(filename))))
         return None
 
-    if (line == None):
+    if (line is None):
         line = hdulist['SCI'].data.shape[0] / 2
         logger.debug("Picking the central row, # = %d" % (line))
+    else:
+        logger.info("Using line %d for wavelength calibration" % (line))
 
     avg_width = 10
     spec = extract_arc_spectrum(hdulist, line, avg_width)
