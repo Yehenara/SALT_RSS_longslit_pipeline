@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
-import os, sys
+import os
+import sys
 import pyfits
 import numpy
 import scipy
 
 import pysalt
 import logging
+from optparse import OptionParser
 
 datadir="/work/salt/sandbox_official/polSALT/polsalt/data/"
 
@@ -29,11 +31,11 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     y *= ybin
     x *= xbin
 
-    if (y_center == None):
-        y_center = img.shape[0]/2.
-    if (x_center == None):
-        x_center = img.shape[1]/2.
-    logger.info("Using (binned) center coordinates of x=%.2f, y=%.2f" % (x_center, y_center))
+    if (y_center is None):
+        y_center = img.shape[0]/2. * ybin
+    if (x_center is None):
+        x_center = img.shape[1]/2. * xbin
+    logger.info("Using (un-binned) center coordinates of x=%.2f, y=%.2f" % (x_center, y_center))
 
     #
     #
@@ -57,9 +59,9 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     articulation_angle = header['CAMANG'] #GRTILT'] # A_C
     grating_name = header['GRATING']
 
-    print "grating-angle:", grating_angle
-    print "articulation angle:", articulation_angle
-    print "grating name:", grating_name
+    logger.debug("grating-angle: %f" % (grating_angle))
+    logger.debug("articulation angle: %f" % (articulation_angle))
+    logger.debug("grating name: %s" % (grating_name))
 
     
     # get grating data: lines per mm
@@ -67,7 +69,7 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     #lmm = grlmm[grnum]
     grnum = numpy.where(grating_names==grating_name)[0][0]
     grating_lines_per_mm = grlmm[grating_name == grating_names][0]
-    print "grating lines/mm:", grating_lines_per_mm
+    logger.debug("grating lines/mm: %f" % (grating_lines_per_mm))
 
     #alpha_r = numpy.radians(grang+Grat0)
     alpha_r = numpy.radians(grating_angle+Grat0)
@@ -75,50 +77,51 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     beta0_r = numpy.radians(articulation_angle*(1+ArtErr)+Home0)-alpha_r
     gam0_r = numpy.radians(grgam0[grnum])
 
-    print "alpha-r:", alpha_r
-    print "beta_r :", beta0_r
-    print "gamma_r:", gam0_r
+    logger.debug("alpha-r: %f" % (alpha_r))
+    logger.debug("beta_r : %f" % (beta0_r))
+    logger.debug("gamma_r: %f" % (gam0_r))
 
     # compute reference wavelength at center of focal plane
     #lam0 = 1e7*numpy.cos(gam0_r)*(numpy.sin(alpha_r) + numpy.sin(beta0_r))/lmm
     lam0 = 1e7*numpy.cos(gam0_r)*(numpy.sin(alpha_r) + numpy.sin(beta0_r))/grating_lines_per_mm
-    print "reference wavelength:", lam0
+    logger.debug("reference wavelength: %f" % (lam0))
 
     # compute camera focal length
     ww = (lam0-4000.)/1000.
     fcam = numpy.polyval(FCampoly,ww)
-    print "camera focal length @ 4000A:", fcam,"mm"
+    logger.debug("camera focal length @ 4000A: %f mm" %(fcam))
 
     # compute dispersion per pixel
     disp = (1e7*numpy.cos(gam0_r)*numpy.cos(beta0_r)/grating_lines_per_mm) / (fcam/.015)
     #disp = (1e7*numpy.cos(gam0_r)*numpy.cos(beta0_r)/lmm)/(fcam/.015)
-    print "dispersion:", disp," angstroems/pixel"
+    logger.debug("dispersion: %f angstroems/pixel [unbinned]" % (disp))
 
 
     # 
     # Iteratively compute a lambda for each pixel, refine the focal length as 
     # fct of lambda, and recompute lambda
     # 
-    _x = (x - (x_center*xbin)) * 0.015 #/ 3162.
-    _y = ((y_center*ybin)-y) * 0.015 # / 2048.
-    print numpy.min(x), numpy.max(x)
-    print numpy.min(y), numpy.max(y)
+    _x = (x - x_center) * 0.015 #/ 3162.
+    _y = (y - y_center) * 0.015 # / 2048.
+    logger.debug("min/max X: %f / %f" % (numpy.min(x), numpy.max(x)))
+    logger.debug("min/max Y: %f / %f" % (numpy.min(y), numpy.max(y)))
 
-    print numpy.min(_x), numpy.max(_x)
-    print numpy.min(_y), numpy.max(_y)
+    logger.debug("min/max _X [mm]: %f / %f" % (numpy.min(_x), numpy.max(_x)))
+    logger.debug("min/max _Y [mm]: %f / %f" % (numpy.min(_y), numpy.max(_y)))
 
     alpha = numpy.ones(img.shape) * alpha_r
     for iteration in range(4):
+        logger.debug("working on iterative correction for fcam(lambda) - iteration %d" % (iteration+1))
         beta = _x/fcam + beta0_r 
         gamma = _y/fcam + gam0_r
-        print beta.shape, gamma.shape
+        #print beta.shape, gamma.shape
 
         # compute lambda (1e7 = angstroem/mm)
         _lambda = 1e7 * numpy.cos(gamma) * (numpy.sin(beta) + numpy.sin(alpha)) / grating_lines_per_mm
 
         L = (_lambda - 4000.) / 1000.
         fcam = numpy.polyval(FCampoly,L)
-        print "ITER", iteration, fcam.shape
+        #print "ITER", iteration, fcam.shape
 
         pyfits.PrimaryHDU(data=_lambda).writeto("lambda_%d.fits" % (iteration+1), clobber=True)
 
@@ -149,16 +152,37 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
 
 if __name__ == "__main__":
     
-    fn = sys.argv[1]
+    logger = pysalt.mp_logging.setup_logging()
+
+    parser = OptionParser()
+    parser.add_option("", "--xbin", dest="xbin",
+                      help="binning in x-direction (wavelength)",
+                      default=2, type=int)
+    parser.add_option("", "--ybin", dest="ybin",
+                      help="binning in y-direction (spatial)",
+                      default=2, type=int)
+    parser.add_option("", "--ycenter", dest="ycenter",
+                      help="y center position in un-binned pixels",
+                      default=2170, type=float)
+
+    (options, cmdline_args) = parser.parse_args()
+
+    fn = cmdline_args[0]
     hdulist = pyfits.open(fn)
 
+
     binning = pysalt.get_binning(hdulist)
-    xbin, ybin = 4,4
+    xbin, ybin = options.xbin, options.ybin
     print "binning", binning, xbin, ybin
 
-    rssmodelwave(#grating,grang,artic,cbin,refimg,
+
+    wlmap = rssmodelwave(#grating,grang,artic,cbin,refimg,
         header=hdulist[0].header, 
         img=hdulist['SCI'].data,
-        xbin=xbin, ybin=ybin)
+        xbin=xbin, ybin=ybin,
+        y_center=options.ycenter,
+    )
+    print wlmap.shape
 
-    
+    pysalt.mp_logging.shutdown_logging(logger)
+
