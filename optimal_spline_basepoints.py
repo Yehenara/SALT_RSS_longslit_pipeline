@@ -181,7 +181,8 @@ def optimal_sky_subtraction(obj_hdulist,
                             add_edges=True,
                             skyline_flat=None,
                             select_region=None,
-                            debug_prefix=""):
+                            debug_prefix="",
+                            obj_wl=None):
 
     logger = logging.getLogger("OptSplineKs")
     skiplength = 1
@@ -195,20 +196,27 @@ def optimal_sky_subtraction(obj_hdulist,
 
     import time
     time.sleep(1)
-    print '\n'*5, 'img_data\n\n\n', image_data.shape, "\n", image_data, '\n'*5
+    #print '\n'*5, 'img_data\n\n\n', image_data.shape, "\n", image_data, '\n'*5
     if (image_data is None):
         obj_data = obj_hdulist['SCI.RAW'].data #/ fm.reshape((-1,1))
-        print "obj_data:", obj_data.shape
+        #print "obj_data:", obj_data.shape
+        logger.debug("Using obj_data from SCI.RAW extension")
     else:
         obj_data = image_data.copy()
+        logger.debug("Using obj_data from passed image data")
+
     #obj_wl   = wlmap_model #wl_map #obj_hdulist['WAVELENGTH'].data
 
     x_eff, wl_map, medians, p_scale, p_skew, fm = \
         None, None, None, None, None, numpy.ones(obj_hdulist['SCI'].data.shape[0])
     wlmap_model = None
-    y_center = obj_hdulist['SCI'].data.shape[0]/2.
+    y_center = 2070 #obj_hdulist['SCI'].data.shape[0]/2.
 
-    if (wlmode == 'arc'):
+    if (obj_wl is not None):
+        logger.info("Using existing WL model")
+        pass
+
+    elif (wlmode == 'arc'):
         obj_wl = obj_hdulist['WAVELENGTH'].data
         logger.info("Using wavelength solution from ARC")
 
@@ -236,6 +244,7 @@ def optimal_sky_subtraction(obj_hdulist,
     else:
         logger.error("Unknown WL mode, using ARC instead!")
         obj_wl = obj_hdulist['WAVELENGTH'].data
+
     # obj_wl   = wl_map #wl_map #obj_hdulist['WAVELENGTH'].data
     obj_rms  = obj_hdulist['VAR'].data / fm.reshape((-1,1))
 
@@ -263,7 +272,7 @@ def optimal_sky_subtraction(obj_hdulist,
         pysalt.clobberfile(debug_prefix+"data_preflat.fits")
         fits.PrimaryHDU(data=obj_cube[:,:,1]).writeto(debug_prefix+"data_preflat.fits", clobber=True)
 
-    if (not type(skyline_flat) == type(None)):
+    if (skyline_flat is not None):
         # We also received a skyline flatfield for field flattening
         obj_cube[:,:,1] /= skyline_flat.reshape((-1,1))
         logger.info("Applying skyline flatfield to data before sky-subtraction")
@@ -285,11 +294,13 @@ def optimal_sky_subtraction(obj_hdulist,
         # by default, use entire frame for sky
  
         if (mask_objects):
+            logger.debug("mask_object was selected, so looking for source_mask next")
             source_mask = find_source_mask(obj_data)
             use4sky = use4sky & (~source_mask)
             # trim down sky by regions not contaminated with (strong) sources
 
-        if (not select_region == None):
+        if (select_region is not None):
+            logger.debug("limiting sky to selected regions")
             sky = numpy.zeros((obj_cube.shape[0]), dtype=numpy.bool)
             for y12 in select_region:
                 #print "@@@@@@@@@@",y12, numpy.sum(use4sky), use4sky.shape
