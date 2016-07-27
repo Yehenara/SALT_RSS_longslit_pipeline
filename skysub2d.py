@@ -83,19 +83,19 @@ def compute_spline_sky_spectrum(all_skies,
 
     # Now reject all basepoints with insufficient datapoints close to them
     # require at least N datapoints
-    logger.info("Creating search tree")
+    logger.debug("Creating search tree")
     every = int(math.ceil(all_skies.shape[0] / (10*basepoints.shape[0])))
-    print every
+    logger.debug("reducing sample size by only taking 1 out of %d values" % (every))
     kdtree = scipy.spatial.cKDTree(all_skies[:,0][::every].reshape((-1,1)))
     search_radius = basepoints[1] - basepoints[0]
-    logger.info("querying tree")
+    logger.debug("querying tree")
     nearest_neighbor, i = kdtree.query(x=basepoints.reshape((-1,1)), 
                                        k=N_min, # only find 1 nearest neighbor
                                        p=1, # use linear distance
                                        distance_upper_bound=search_radius)
     logger.info("done searching!")
     neighbor_count = numpy.sum( numpy.isfinite(nearest_neighbor), axis=1)
-    print neighbor_count.shape
+    #print neighbor_count.shape
     
     numpy.savetxt("neighbor_count", 
                   numpy.append(basepoints.reshape((-1,1)),
