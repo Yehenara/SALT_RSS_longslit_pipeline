@@ -97,6 +97,7 @@ import prep_science
 import podi_cython
 import optscale
 import fiddle_slitflat2
+import wlmodel
 # this is just temporary to make debugging easier
 import spline_pickle_test
 
@@ -123,7 +124,7 @@ def find_appropriate_arc(hdulist, arcfilelist, arcinfos=None):
     ]
 
     logger = logging.getLogger("FindGoodArc")
-    logger.info("Checking the following list of ARCs:\n * %s" % ("\n * ".join(arcfilelist)))
+    logger.debug("Checking the following list of ARCs:\n * %s" % ("\n * ".join(arcfilelist)))
 
     matching_arcs = []
     for arcfile in arcfilelist:
@@ -161,7 +162,7 @@ def find_appropriate_arc(hdulist, arcfilelist, arcinfos=None):
             logger.debug("FOUND GOOD ARC")
             matching_arcs.append(arcfile)
 
-    print "***\n" * 3, matching_arcs, "\n***" * 3
+    # print "***\n" * 3, matching_arcs, "\n***" * 3
 
     return matching_arcs
 
@@ -251,7 +252,7 @@ def tiledata(hdulist, rssgeom):
 
     # Add in the widths of all gaps
     binx, biny = pysalt.get_binning(hdulist)
-    logger.info("Creating tiled image using binning %d x %d" % (binx, biny))
+    logger.debug("Creating tiled image using binning %d x %d" % (binx, biny))
 
     width = numpy.sum(amp_width) + 2 * gap / binx  # + numpy.sum(numpy.fabs((xshift/binx).round()))
     height = numpy.max(amp_height)  # + numpy.sum(numpy.fabs((yshift/biny).round()))
@@ -262,7 +263,7 @@ def tiledata(hdulist, rssgeom):
 
     for name in ext_order:
 
-        logger.info("Starting tiling for extension %s !" % (name))
+        logger.debug("Starting tiling for extension %s !" % (name))
 
         # Now create the mosaics
         data = numpy.empty((height, width))
@@ -291,7 +292,7 @@ def tiledata(hdulist, rssgeom):
         imghdu.name = name
         out_hdus.append(imghdu)
 
-    logger.info("Finished tiling for all %d data products" % (len(ext_order)))
+    logger.debug("Finished tiling for all %d data products" % (len(ext_order)))
 
     return fits.HDUList(out_hdus)
 
@@ -747,7 +748,9 @@ def specred(rawdir, prodir, options,
             # Now we have a HDUList of the mosaiced ARC file, so 
             # we can continue to the wavelength calibration
             #
-            wls_data = wlcal.find_wavelength_solution(hdu_mosaiced, None)
+            logger.info("Starting wavelength calibration")
+            binx, biny = pysalt.get_binning(hdulist)
+            wls_data = wlcal.find_wavelength_solution(hdu_mosaiced, line=(2070/biny))
 
             #
             # Write wavelength solution to FITS header so we can access it 
@@ -761,6 +764,7 @@ def specred(rawdir, prodir, options,
             #
             # Now add some plotting here just to make sure the user is happy :-)
             #
+            logger.info("Creating calibration plot for user")
             plotfile = arc_mosaic_filename[:-5] + ".png"
             wlcal.create_wl_calibration_plot(wls_data, hdu_mosaiced, plotfile)
 
@@ -768,6 +772,7 @@ def specred(rawdir, prodir, options,
             # Simulate the ARC spectrum by extracting a 2-D ARC spectrum just 
             # like we would for the sky-subtraction in OBJECT frames
             #
+            logger.info("Computing a 2-D wavelength solution by tracing arc lines")
             arc_region_file = "ARC_m_%s_traces.reg" % (fb[:-5])
             wls_2darc = traceline.compute_2d_wavelength_solution(
                 arc_filename=hdu_mosaiced,
@@ -777,14 +782,35 @@ def specred(rawdir, prodir, options,
                 debug=False,
                 arc_region_file=arc_region_file,
                 trace_every=0.05,
+                wls_data=wls_data,
             )
             wl_hdu = fits.ImageHDU(data=wls_2darc)
             wl_hdu.name = "WAVELENGTH"
+            wl_hdu.header['OBJECT'] = ("wavelength map (ARC-trace)", "description")
             hdu_mosaiced.append(wl_hdu)
+
+            #
+            # Compute a synthetic 2-D wavelength model
+            #
+            logger.info("Computing 2-D wavelength map from RSS spectrograph model")
+            model_wl = wlmodel.rssmodelwave(
+                header=hdu_mosaiced[0].header,
+                img=hdu_mosaiced['SCI'].data,
+                xbin=binx, ybin=biny,
+                y_center=2070,
+            )
+            hdu_mosaiced.append(
+                fits.ImageHDU(data=model_wl,
+                              name="WL_MODEL_2D",
+                              header=fits.Header({"OBJECT": "wavelength map from RSS model"}))
+            )
+            hdu_mosaiced[0].header['RSSYCNTR'] = (2070., "reference line for spectrograph model")
+
 
             #
             # Now go ahead and extract the full 2-d sky
             #
+            logger.info("Extracting a ARC-spectrum from the entire frame")
             arc_regions = numpy.array([[0, hdu_mosaiced['SCI'].data.shape[0]]])
             arc2d = skysub2d.make_2d_skyspectrum(
                 hdu_mosaiced,
@@ -796,6 +822,7 @@ def specred(rawdir, prodir, options,
             simul_arc_hdu.name = "SIMULATION"
             hdu_mosaiced.append(simul_arc_hdu)
 
+            logger.info("Writing calibrated ARC frame to file (%s)" % (arc_mosaic_filename))
             pysalt.clobberfile(arc_mosaic_filename)
             hdu_mosaiced.writeto(arc_mosaic_filename, clobber=True)
             arc_mosaic_list[idx] = arc_mosaic_filename
@@ -909,6 +936,7 @@ def specred(rawdir, prodir, options,
         # Also create the image without cosmic ray rejection, and add it to the 
         # output file
         #
+        logger.info("Creating mosaiced frame WITHOUT cosmic-ray rejection")
         hdu_nocrj = salt_prepdata(filename,
                                   flatfield_frame=masterflat_filename,
                                   badpixelimage=None,
@@ -980,7 +1008,7 @@ def specred(rawdir, prodir, options,
 
         fits.PrimaryHDU(data=img_data).writeto("img0.fits", clobber=True)
 
-        apply_skyline_intensity_flat = True
+        apply_skyline_intensity_flat = False
         if (apply_skyline_intensity_flat):
             # 
             # Extract the sky-line intensity profile along the slit. Use this to 
@@ -1029,15 +1057,16 @@ def specred(rawdir, prodir, options,
 
             # img_data /= intensity_profile.reshape((-1,1))
 
-        print "Adding xxx extension"
-        hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
-                                 data=img_data,
-                                 name="XXX"))
+        # logger.info("Adding xxx extension")
+        # hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
+        #                          data=img_data,
+        #                          name="XXX"))
 
         #
         # Compute a full-frame 2-D flat-field.
         # With this flat-field we can extract a better sky spectrum, and later improve the sky-subtraction
         #
+        logger.info("Computing 2-D flatfield from night sky intensity profile")
         vph_flatfield, vph_flat_interpol = fiddle_slitflat2.create_2d_flatfield_from_sky(wls_2d, img_data)
         flattened_img = img_data / vph_flatfield
         logger.info("Flattened image: %s" % (str(flattened_img.shape)))
@@ -1127,6 +1156,7 @@ def specred(rawdir, prodir, options,
             wlmode=options.wlmode,
             debug_prefix="%s__" % (fb[:-5]),
             image_data=flattened_img,
+            obj_wl=wls_2d
         )
         (x_eff, wl_map, medians, p_scale, p_skew, fm) = extra
 
@@ -1156,16 +1186,19 @@ def specred(rawdir, prodir, options,
 
         # sky_2d = sky2d_full
 
-        fits.PrimaryHDU(data=hdu['SCI.RAW'].data / skyline_flat).writeto("img_sky2d_input_skylineflat.fits",
-                                                                         clobber=True)
-        fits.PrimaryHDU(data=hdu['SCI.RAW'].data / fm.reshape((-1, 1))).writeto("img_sky2d_input_fm.fits", clobber=True)
+        try:
+            if (skyline_flat is not None):
+                fits.PrimaryHDU(data=hdu['SCI.RAW'].data / skyline_flat).writeto("img_sky2d_input_skylineflat.fits",
+                                                                             clobber=True)
+            fits.PrimaryHDU(data=hdu['SCI.RAW'].data / fm.reshape((-1, 1))).writeto("img_sky2d_input_fm.fits", clobber=True)
 
-        fits.PrimaryHDU(data=sky_2d).writeto("img_sky2d.fits", clobber=True)
+            fits.PrimaryHDU(data=sky_2d).writeto("img_sky2d.fits", clobber=True)
 
-        fits.PrimaryHDU(data=(sky_2d*vph_flatfield)).writeto("img_sky2d_x_vphflat.fits", clobber=True)
+            fits.PrimaryHDU(data=(sky_2d*vph_flatfield)).writeto("img_sky2d_x_vphflat.fits", clobber=True)
 
-        fits.PrimaryHDU(data=(img_data - (sky_2d*vph_flatfield))).writeto("img_vphflat_skysub.fits", clobber=True)
-
+            fits.PrimaryHDU(data=(img_data - (sky_2d*vph_flatfield))).writeto("img_vphflat_skysub.fits", clobber=True)
+        except:
+            pass
         #
         # Add here:
         #
