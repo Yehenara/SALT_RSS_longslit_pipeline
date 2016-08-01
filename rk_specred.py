@@ -936,26 +936,26 @@ def specred(rawdir, prodir, options,
         # Also create the image without cosmic ray rejection, and add it to the 
         # output file
         #
-        logger.info("Creating mosaiced frame WITHOUT cosmic-ray rejection")
-        hdu_nocrj = salt_prepdata(filename,
-                                  flatfield_frame=masterflat_filename,
-                                  badpixelimage=None,
-                                  create_variance=True,
-                                  clean_cosmics=False,
-                                  mosaic=True,
-                                  verbose=False,
-                                  )
-        hdu_sci_nocrj = hdu_nocrj['SCI']
-        hdu_sci_nocrj.name = 'SCI.NOCRJ'
-        hdu.append(hdu_sci_nocrj)
+        # logger.info("Creating mosaiced frame WITHOUT cosmic-ray rejection")
+        # hdu_nocrj = salt_prepdata(filename,
+        #                           flatfield_frame=masterflat_filename,
+        #                           badpixelimage=None,
+        #                           create_variance=True,
+        #                           clean_cosmics=False,
+        #                           mosaic=True,
+        #                           verbose=False,
+        #                           )
+        # hdu_sci_nocrj = hdu_nocrj['SCI']
+        # hdu_sci_nocrj.name = 'SCI.NOCRJ'
+        # hdu.append(hdu_sci_nocrj)
 
         # Make backup of the image BEFORE sky subtraction
         # make sure to copy the actual data, not just create a duplicate reference
-        for source_ext in ['SCI', 'SCI.NOCRJ']:
-            presub_hdu = fits.ImageHDU(data=numpy.array(hdu['SCI'].data),
-                                       header=hdu['SCI'].header)
-            presub_hdu.name = source_ext + '.RAW'
-            hdu.append(presub_hdu)
+        # for source_ext in ['SCI', 'SCI.NOCRJ']:
+        #     presub_hdu = fits.ImageHDU(data=numpy.array(hdu['SCI'].data),
+        #                                header=hdu['SCI'].header)
+        #     presub_hdu.name = source_ext + '.RAW'
+        #     hdu.append(presub_hdu)
 
         #
         # Find the ARC closest in time to this frame
@@ -1024,20 +1024,20 @@ def specred(rawdir, prodir, options,
                     plot_filename=plot_filename,
                 )
             # Flatten the science frame using the line profile
-            hdu.append(
-                fits.ImageHDU(
-                    data=numpy.array(hdu['SCI'].data),
-                    header=hdu['SCI'].header,
-                    name="SCI.PREFLAT"
-                )
-            )
-            hdu.append(
-                fits.ImageHDU(
-                    data=numpy.array(hdu['SCI'].data / intensity_profile.reshape((-1, 1))),
-                    header=hdu['SCI'].header,
-                    name="SCI.POSTFLAT"
-                )
-            )
+            # hdu.append(
+            #     fits.ImageHDU(
+            #         data=numpy.array(hdu['SCI'].data),
+            #         header=hdu['SCI'].header,
+            #         name="SCI.PREFLAT"
+            #     )
+            # )
+            # hdu.append(
+            #     fits.ImageHDU(
+            #         data=numpy.array(hdu['SCI'].data / intensity_profile.reshape((-1, 1))),
+            #         header=hdu['SCI'].header,
+            #         name="SCI.POSTFLAT"
+            #     )
+            # )
 
             #
             # Mask out all regions with relative intensities below 0.1x max 
@@ -1304,20 +1304,20 @@ def specred(rawdir, prodir, options,
                                 name="SKY.RAW")
         hdu.append(ss_hdu2)
 
-        hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
-                                 data=wl_map,
-                                 name="WL_XXX")
-                   )
+        # hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
+        #                          data=wl_map,
+        #                          name="WL_XXX")
+        #            )
         hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
                                  data=skyscaling2d,
                                  name="SKY.SCALE")
                    )
 
         skysub_img = (img_data) - (sky_2d * skyscaling2d)  # opt_sky_scaling)
-        skysub_hdu = fits.ImageHDU(header=hdu['SCI'].header,
-                                   data=numpy.array(skysub_img),
-                                   name="SKYSUB.OPT")
-        hdu.append(skysub_hdu)
+        # skysub_hdu = fits.ImageHDU(header=hdu['SCI'].header,
+        #                            data=numpy.array(skysub_img),
+        #                            name="SKYSUB.OPT")
+        # hdu.append(skysub_hdu)
 
         #
         # Run cosmic ray rejection on the sky-line subtracted frame
@@ -1855,6 +1855,8 @@ if __name__ == '__main__':
     parser.add_option("-s", "--scale", dest="skyscaling",
                       help="How to scale the sky spectrum (none,s2d,p2d)",
                       default="none")
+    parser.add_option("-d", "--debug", dest="debug",
+                       action="store_true", default=False)
     (options, cmdline_args) = parser.parse_args()
 
     print options
