@@ -7,12 +7,16 @@ import sys
 import math
 from optparse import OptionParser
 import pysalt.mp_logging
+import logging
 
 def drizzle_extract_spectrum(fits_fn, out_fn,
                              input_ext="SKYSUB.OPT",
                              minwl=-1, maxwl=-1, dwl=-1,
                              y_ranges=None,
+                             output_format="fits",
                              ):
+
+    logger = logging.getLogger("DrizzleSpec")
 
     # y1 = int(sys.argv[2])
     # y2 = int(sys.argv[3])
@@ -28,11 +32,13 @@ def drizzle_extract_spectrum(fits_fn, out_fn,
     # open fits file
     #
     hdu = fits.open(fits_fn)
-    hdu.info()
+    logger.info("opening input fits %s" % (fits_fn))
+    #hdu.info()
 
     # load image data and wavelength map
     img_data_full = hdu[input_ext].data
     wl_data_full = hdu['WAVELENGTH'].data
+    variance_full = hdu['VAR'].data
 
     wl0 = minwl
     wlmax = maxwl
@@ -48,43 +54,48 @@ def drizzle_extract_spectrum(fits_fn, out_fn,
 
     # Now prepare the output array
     out_wl_count = int((wlmax - wl0) / dwl) + 1
-    print "output: %d wavelength points from %f to %f in steps of %f" % (
-        out_wl_count, wl0, wlmax, dwl)
+    logger.info("output: %d wavelength points from %f to %f in steps of %f angstroems" % (
+        out_wl_count, wl0, wlmax, dwl))
     out_wl = numpy.arange(out_wl_count, dtype=numpy.float) * dwl + wl0
 
     spectra_1d = numpy.empty((out_wl_count, len(y_ranges)))
+    variance_1d = numpy.empty((out_wl_count, len(y_ranges)))
 
     for cur_yrange, _yrange in enumerate(y_ranges):
         y1 = _yrange[0]
         y2 = _yrange[1]
-
+        logger.info("Extracting 1-D spectrum from columns %d --- %d" % (y1,y2))
         #
         # extract data
         #
         img_data = img_data_full[(y1-1):y2, :]
         wl_data = wl_data_full[(y1-1):y2, :]
-        print img_data.shape, wl_data.shape
+        var_data = variance_full[(y1-1):y2, :]
+        #print img_data.shape, wl_data.shape
 
         #
         # prepare the output flux array, and initialize with NaNs
         #
         out_flux = numpy.zeros_like(out_wl)
         out_flux[:] = numpy.NaN
-        print out_wl
+        out_var = numpy.zeros_like(out_wl)
+        out_var[:] = numpy.NaN
+        #print out_wl
 
         #
         # prepare a padded WL array
         #
         wl_data_padded = numpy.pad(wl_data, ((0,0), (1,1)), mode='edge') #linear_ramp')
-        print wl_data.shape, wl_data_padded.shape
+        #print wl_data.shape, wl_data_padded.shape
         wl_width = 0.5*(wl_data_padded[:, 2:] - wl_data_padded[:, :-2])
         wl_from = 0.5*(wl_data_padded[:, 0:-2] + wl_data_padded[:,1:-1])
         wl_to = 0.5*(wl_data_padded[:, 1:-1] + wl_data_padded[:,2:])
-        print wl_width.shape, wl_from.shape, wl_to.shape
+        #print wl_width.shape, wl_from.shape, wl_to.shape
 
         # compute the flux density array (i.e. flux per wavelength) by dividing the
         # flux image (which is flux integrated over the width of a pixel) by the width of each pixel
         img_data_per_wl = img_data / wl_width
+        var_data_per_wl = var_data / wl_width
 
         #
         # now drizzle the data into the output container
@@ -94,6 +105,9 @@ def drizzle_extract_spectrum(fits_fn, out_fn,
         wl_to_1d = wl_to.ravel()
         wl_data_1d = wl_data.ravel()
         img_data_per_wl_1d = img_data_per_wl.ravel()
+        var_data_1d = var_data.ravel()
+        var_data_per_wl_1d = var_data_per_wl.ravel()
+        wl_width_1d = wl_width.ravel()
 
         for px in range(wl_width_1d.shape[0]):
 
@@ -120,7 +134,9 @@ def drizzle_extract_spectrum(fits_fn, out_fn,
 
                 if (numpy.isnan(out_flux[tp])):
                     out_flux[tp] = 0.
-                out_flux[tp] += fraction * img_data_per_wl_1d[px] * dwl
+                    out_var[tp] = 0.
+                out_flux[tp] += fraction * img_data_per_wl_1d[px] #* (dwl / wl_width_1d[px])
+                out_var[tp] += fraction * var_data_per_wl_1d[px] #* (dwl / wl_width_1d[px])
                 #print "     ", tp, fraction
 
 
@@ -128,15 +144,53 @@ def drizzle_extract_spectrum(fits_fn, out_fn,
         # done with this 1-d extracted spectrum
         #
         spectra_1d[:,cur_yrange] = out_flux[:]
-
-
+        variance_1d[:, cur_yrange] = out_var[:]
+        logger.debug("Done with 1-d extraction")
 
     #
     # Finally, merge wavelength data and flux and write output to file
     #
-    numpy.savetxt(out_fn,
-                  numpy.append(out_wl.reshape((-1,1)),
-                               spectra_1d, axis=1))
+    if (output_format.lower() == "fits"):
+        logger.info("Writing FITS output to %s" % (out_fn))
+        # create the output multi-extension FITS
+        spec_3d = numpy.empty((2, spectra_1d.shape[1],  spectra_1d.shape[0]))
+        spec_3d[0,:,:] = spectra_1d.T[:,:]
+        spec_3d[1,:,:] = variance_1d.T[:,:]
+
+            # numpy.append(spectra_1d.reshape((spectra_1d.shape[1], spectra_1d.shape[0], 1)),
+            #                    variance_1d.reshape((spectra_1d.shape[1], spectra_1d.shape[0], 1)),
+            #                     axis=2,
+            #                    )
+        print spec_3d.shape
+        hdulist = fits.HDUList([
+            fits.PrimaryHDU(header=hdu[0].header),
+            fits.ImageHDU(data=spectra_1d.T, name="SCI"),
+            fits.ImageHDU(data=variance_1d.T, name="VAR"),
+            fits.ImageHDU(data=spec_3d, name="SPEC3D")
+        ])
+        # add headers for the wavelength solution
+        for ext in ['SCI', 'VAR']:
+            hdulist[ext].header['WCSNAME'] = "calibrated wavelength"
+            hdulist[ext].header['CRPIX1'] = 1.
+            hdulist[ext].header['CRVAL1'] = wl0
+            hdulist[ext].header['CD1_1'] = dwl
+            hdulist[ext].header['CTYPE1'] = "AWAV"
+            hdulist[ext].header['CUNIT1'] = "Angstrom"
+            for i,yr in enumerate(y_ranges):
+                keyname = "YR_%03d" % (i+1)
+                value = "%04d:%04d" % (yr[0], yr[1])
+                hdulist[ext].header[keyname] = (value, "y-range for aperture %d" % (i+1))
+        hdulist.writeto(out_fn, clobber=True)
+    else:
+        logger.info("Writing output as ASCII to %s / %s.var" % (out_fn, out_fn))
+        numpy.savetxt(out_fn,
+                      numpy.append(out_wl.reshape((-1,1)),
+                                   spectra_1d, axis=1))
+        numpy.savetxt(out_fn+".var",
+                      numpy.append(out_wl.reshape((-1,1)),
+                                   variance_1d, axis=1))
+
+    logger.debug("All done!")
     # numpy.savetxt(out_fn+".perwl",
     #               numpy.append(wl_data_1d.reshape((-1,1)),
     #                            img_data_per_wl_1d.reshape((-1,1)), axis=1))
@@ -164,6 +218,10 @@ if __name__ == "__main__":
     parser.add_option("-d", "--dwl", dest="dwl",
                       help="wavelength sampling / dispersion",
                       default=-1, type=float)
+    parser.add_option("-f", "--format", dest="format",
+                      help="output format (FITS/ascii)",
+                      default="fits", type=str)
+
     # parser.add_option("-s", "--scale", dest="skyscaling",
     #                   help="How to scale the sky spectrum (none,s2d,p2d)",
     #                   default="none")
@@ -189,6 +247,7 @@ if __name__ == "__main__":
                              maxwl=options.maxwl,
                              dwl=options.dwl,
                              y_ranges=y_ranges,
+                             output_format=options.format,
                              )
 
     pysalt.mp_logging.shutdown_logging(logger)
