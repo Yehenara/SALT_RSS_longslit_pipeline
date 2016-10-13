@@ -15,10 +15,28 @@ datadir="/work/salt/sandbox_official/polSALT/polsalt/data/"
 # based on http://www.sal.wisc.edu/PFIS/docs/rss-vis/archive/protected/pfis/3170/3170AM0010_Spectrograph_Model_Draft_2.pdf
 # and https://github.com/saltastro/SALTsandbox/blob/master/polSALT/polsalt/specpolmap.py
 
+def rotate_detector(ndet=0,
+                    dy=0, slope=0,
+                    xbin=1,ybin=1):
+
+    # center coordinates of each detector in unbinned pixels
+    refx = [1024,3162, 5300][ndet]
+    refy = 2048
+
+    # compute rotation angle
+    angle = numpy.arcsin(slope)
+
+    sin_angle = slope
+    cos_angle = numpy.cos(angle)
+
+
+
 def rssmodelwave(#grating,grang,artic,cbin,refimg,
         header, img,
         xbin=1, ybin=1,
-        y_center=None, x_center=None):
+        y_center=None, x_center=None,
+        debug=False,
+):
 #   compute wavelengths from model (this can probably be done using pyraf spectrograph model)
 
     logger = logging.getLogger("RSS-2Dmodel")
@@ -123,7 +141,8 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
         fcam = numpy.polyval(FCampoly,L)
         #print "ITER", iteration, fcam.shape
 
-        pyfits.PrimaryHDU(data=_lambda).writeto("lambda_%d.fits" % (iteration+1), clobber=True)
+        if (debug):
+            pyfits.PrimaryHDU(data=_lambda).writeto("lambda_%d.fits" % (iteration+1), clobber=True)
 
         
     return _lambda
@@ -183,6 +202,7 @@ if __name__ == "__main__":
         y_center=options.ycenter,
     )
     print wlmap.shape
+    pyfits.PrimaryHDU(data=wlmap).writeto(cmdline_args[1], clobber=True)
 
     pysalt.mp_logging.shutdown_logging(logger)
 
