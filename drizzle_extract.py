@@ -289,50 +289,49 @@ def drizzle_extract_spectrum(fits_fn, out_fn,
 
 if __name__ == "__main__":
 
+    import argparse
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--input", dest="inputext",
+                        default="SKYSUB.OPT",
+                        type=str,
+                        help="name of extension to extract")
+    parser.add_argument("-n", "--minwl", dest="minwl",
+                        help="minimum wavelength of output",
+                        type=float, default=-1)
+    parser.add_argument("-x", "--maxwl", dest="maxwl",
+                        help="maximum wavelength of output",
+                        default=-1, type=float)
+    parser.add_argument("-d", "--dwl", dest="dwl",
+                        help="wavelength sampling / dispersion",
+                        default=-1, type=float)
+
+    parser.add_argument("input_file", type=str,
+                        help="input file (reduced by rk_specred)")
+    parser.add_argument("output_file", type=str,
+                        help="output file (written as both ascii and fits)")
+    parser.add_argument("blocks",
+                        nargs='+',
+                        help="y-range intervals in the format y1:y2")
+
+    args = parser.parse_args()
 
     logger = pysalt.mp_logging.setup_logging()
 
-    parser = OptionParser()
-    parser.add_option("", "--input", dest="inputext",
-                      help="name of extension to extract",
-                      default="SKYSUB.OPT")
-    parser.add_option("-n", "--minwl", dest="minwl",
-                      help="minimum wavelength of output",
-                      default=-1, type=float)
-    parser.add_option("-x", "--maxwl", dest="maxwl",
-                      help="maximum wavelength of output",
-                      default=-1, type=float)
-    parser.add_option("-d", "--dwl", dest="dwl",
-                      help="wavelength sampling / dispersion",
-                      default=-1, type=float)
-    parser.add_option("-f", "--format", dest="format",
-                      help="output format (FITS/ascii)",
-                      default="fits", type=str)
-
-    # parser.add_option("-s", "--scale", dest="skyscaling",
-    #                   help="How to scale the sky spectrum (none,s2d,p2d)",
-    #                   default="none")
-    # parser.add_option("-d", "--debug", dest="debug",
-    #                    action="store_true", default=False)
-    (options, cmdline_args) = parser.parse_args()
-
-    print options
-    print cmdline_args
-
-    fits_fn = cmdline_args[0]
-    out_fn = cmdline_args[1]
+    fits_fn = args.input_file
+    out_fn = args.output_file
 
     y_ranges = []
-    for inp in cmdline_args[2:]:
+    for inp in args.blocks:
         items = inp.split(":")
         y_ranges.append([int(items[0]), int(items[1])])
 
     drizzle_extract_spectrum(fits_fn=fits_fn,
                              out_fn=out_fn,
-                             input_ext=options.inputext,
-                             minwl=options.minwl,
-                             maxwl=options.maxwl,
-                             dwl=options.dwl,
+                             input_ext=args.inputext,
+                             minwl=args.minwl,
+                             maxwl=args.maxwl,
+                             dwl=args.dwl,
                              y_ranges=y_ranges,
                              output_format=options.format,
                              )
