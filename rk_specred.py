@@ -20,6 +20,9 @@ import glob
 import shutil
 import time
 
+import matplotlib
+matplotlib.use('Agg')
+
 import numpy
 # import pyfits
 # import astropy.io.fits as pyfits
@@ -740,7 +743,7 @@ def specred(rawdir, prodir, options,
             hdu_mosaiced = salt_prepdata(filename,
                                          badpixelimage=None,
                                          create_variance=True,
-                                         clean_cosmics=False,
+                                         clean_cosmics=True,
                                          mosaic=True,
                                          verbose=False)
 
