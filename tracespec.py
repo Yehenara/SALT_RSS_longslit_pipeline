@@ -86,6 +86,77 @@ def compute_spectrum_trace(data, start_x, start_y, xbin=1):
     return combined
 
 
+
+def compute_trace_slopes(tracedata, n_iter=3, polyorder=1):
+
+    npixels = tracedata[-1,0]
+    detector_size = npixels / 3
+
+    poly_fits = [None]*3
+    for detector in range(3):
+
+        x_start = detector * detector_size
+        x_end = x_start + detector_size
+
+        in_detector_mask = (tracedata[:,0] >= x_start) & (tracedata[:,0] <= x_end) & (numpy.isfinite(tracedata[:,1]))
+        _detector_trace = tracedata[in_detector_mask]
+
+        # make space for the best-fit solutions of each iteration
+        detector_trace = numpy.empty((_detector_trace.shape[0], _detector_trace.shape[1]+n_iter))
+        detector_trace[:, :_detector_trace.shape[1]] = _detector_trace
+
+        # detector_trace = numpy.append(tracedata[in_detector_mask],
+        #                               tracedata[in_detector_mask][:,0:1], axis=1)
+
+        valid = numpy.isfinite(detector_trace[:,0]) & numpy.isfinite(detector_trace[:,1])
+        for iteration in range(n_iter):
+
+            try:
+                poly = numpy.polyfit(
+                    x=detector_trace[:,0][valid],
+                    y=detector_trace[:,1][valid],
+                    deg=polyorder,
+                )
+            except Exception as e:
+                print e
+                break
+
+            fit = numpy.polyval(poly, detector_trace[:,0])
+            residual = detector_trace[:,1] - fit
+            _perc = numpy.nanpercentile(residual[valid], [16,84,50])
+            _med = _perc[2]
+            _sigma = 0.5*(_perc[1] - _perc[0])
+            #print _sigma, _perc
+
+            bad = (residual > 3*_sigma) | (residual < -3*_sigma)
+            valid[bad] = False
+
+            detector_trace[:,iteration+_detector_trace.shape[1]] = fit
+
+        poly_fits[detector] = poly
+
+        print "Detector %d: %s" % (detector+1, str(poly))
+        numpy.savetxt("det_trace.%d" % (detector + 1), detector_trace)
+
+    # Now compensate all slopes to be offsets relative to the trace at the center of the detector
+    poly_fits = numpy.array(poly_fits)
+    numpy.savetxt(sys.stdout, poly_fits)
+
+    mid_x = 0.5 * npixels
+    center_y = numpy.polyval(poly_fits[1], mid_x)
+    print center_y
+
+    trace_offset = numpy.zeros((npixels))
+    for detector in range(3):
+
+        x_start = detector * detector_size
+        x_end = x_start + detector_size
+
+        tracepos = numpy.polyval(poly_fits[detector], numpy.arange(npixels))
+        trace_offset[x_start:x_end] = tracepos[x_start:x_end] - center_y
+
+    numpy.savetxt("tracespec.offset", trace_offset)
+
 if __name__ == "__main__":
 
     logger_setup = pysalt.mp_logging.setup_logging()
@@ -105,7 +176,10 @@ if __name__ == "__main__":
     data = hdulist['SKYSUB.OPT'].data
     pyfits.PrimaryHDU(data=data).writeto("tracespec.fits", clobber=True)
 
-
+    print "computing spectrum trace"
     spectrace_data = compute_spectrum_trace(data=data, start_x=start_x, start_y=start_y, xbin=xbin)
+
+    print "finding trace slopes"
+    slopes = compute_trace_slopes(spectrace_data)
 
     pysalt.mp_logging.shutdown_logging(logger_setup)
