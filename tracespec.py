@@ -89,7 +89,7 @@ def compute_spectrum_trace(data, start_x, start_y, xbin=1):
 
 def compute_trace_slopes(tracedata, n_iter=3, polyorder=1):
 
-    npixels = tracedata[-1,0]
+    npixels = tracedata.shape[0] #tracedata[-1,0]
     detector_size = npixels / 3
 
     poly_fits = [None]*3
@@ -156,6 +156,8 @@ def compute_trace_slopes(tracedata, n_iter=3, polyorder=1):
         trace_offset[x_start:x_end] = tracepos[x_start:x_end] - center_y
 
     numpy.savetxt("tracespec.offset", trace_offset)
+    return poly_fits, trace_offset
+
 
 if __name__ == "__main__":
 
@@ -180,6 +182,25 @@ if __name__ == "__main__":
     spectrace_data = compute_spectrum_trace(data=data, start_x=start_x, start_y=start_y, xbin=xbin)
 
     print "finding trace slopes"
-    slopes = compute_trace_slopes(spectrace_data)
+    slopes, trace_offset = compute_trace_slopes(spectrace_data)
 
+    # Now generate a ds9 region file illustrating the actual peak positions, the best-fit lines and
+    # 2 lines on either side to show the slit extent
+    print "writing ds9 region file"
+    with open("tracespec.reg", "w") as ds9:
+        # write header
+        print >>ds9, """# Region file format: DS9 version 4.1
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+physical"""
+
+        # write all points
+        print >>ds9, "\n".join(["point(%.2f,%.2f) # point=x" % (d[0]+1, d[1]+1) for d in spectrace_data[numpy.isfinite(spectrace_data[:,1])]])
+
+        slitwidth = 10
+        #line = trace_offset + start_x + 10
+        for slitwidth in [+10, -10, +30, -30]:
+            print >>ds9, "\n".join([
+                "line(%.2f,%.2f,%.2f,%.2f) # line=0 0" % (i+1, trace_offset[i]+start_y+slitwidth+1,
+                                                          i+1+1, trace_offset[i+1]+start_y+slitwidth+1) for i in range(trace_offset.shape[0]-1)
+            ])
     pysalt.mp_logging.shutdown_logging(logger_setup)
