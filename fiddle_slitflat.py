@@ -4,6 +4,8 @@
 import sys, numpy, scipy, pyfits
 import scipy.ndimage
 
+write_debug = False
+
 def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5):
 
     y,x = numpy.indices(wl.shape)
@@ -31,9 +33,12 @@ def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5):
     combined[:,1] = x[part_of_line]
     combined[:,2] = cut_y
     combined[:,3] = cut_img
-    out_fn = "fiddle_slitflat.comb.%7.2f-%.2f" % (line_wl, line_width)
-    #numpy.savetxt(out_fn, combined)
-    #print out_fn
+
+    if (write_debug):
+        out_fn = "fiddle_slitflat.comb.%7.2f-%.2f" % (line_wl, line_width)
+        numpy.savetxt(out_fn, combined)
+        numpy.save(out_fn, combined)
+        #print out_fn
 
     output = numpy.empty((wl.shape[0],20))
     for iy in range(wl.shape[0]):
@@ -84,11 +89,12 @@ def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5):
 
     output[:,n_iter+3] = output[:,n_iter+2] / output[900,n_iter+2]
 
-    #out_fn2 = "fiddle_slitflat.comb2.%7.2f-%.2f" % (line_wl, line_width)
-    #with open(out_fn, "w") as f:
-    #    numpy.savetxt(f, output)
-    #    print >>f, "\n"*5
-    #print out_fn2
+    if (write_debug):
+        out_fn = "fiddle_slitflat.comb2.%7.2f-%.2f" % (line_wl, line_width)
+        with open(out_fn, "w") as f:
+           numpy.savetxt(f, output)
+           print >>f, "\n"*5
+        #print out_fn2
 
     return fit, poly
 
@@ -100,7 +106,7 @@ if __name__ == "__main__":
     hdu = pyfits.open(fn)
 
     wl = hdu['WAVELENGTH'].data
-    img = hdu['SCI.RAW'].data
+    img = hdu['SCI'].data
 
     line_wl = float(sys.argv[2])
     line_width = float(sys.argv[3])
