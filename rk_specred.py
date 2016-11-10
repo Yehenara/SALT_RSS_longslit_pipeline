@@ -571,7 +571,11 @@ def specred(rawdir, prodir, options,
                 filename, hdulist[0].header['INSTRUME']))
             continue
 
-        obstype = hdulist[0].header['OBSTYPE']
+        obstype = None
+        if ('OBSTYPE' in hdulist[0].header):
+            obstype = hdulist[0].header['OBSTYPE']
+        if (obstype is None or (obstype.strip() == "" and 'CCDTYPE' in hdulist[0].header)):
+            obstype = hdulist[0].header['CCDTYPE']
         if (obstype in obslog):
             obslog[obstype].append(filename)
             logger.debug("Identifying %s as %s" % (filename, obstype))
@@ -596,8 +600,13 @@ def specred(rawdir, prodir, options,
 
     for idx, filename in enumerate(obslog['FLAT']):
         hdulist = fits.open(filename)
-        if (hdulist[0].header['OBSTYPE'].find("FLAT") >= 0 and
-                    hdulist[0].header['INSTRUME'] == "RSS"):
+        obstype = None
+        if ('OBSTYPE' in hdulist[0].header):
+            obstype = hdulist[0].header['OBSTYPE']
+        if (obstype is None or (obstype.strip() == "" and 'CCDTYPE' in hdulist[0].header)):
+            obstype = hdulist[0].header['CCDTYPE']
+        if (obstype.find("FLAT") >= 0 and
+            hdulist[0].header['INSTRUME'] == "RSS"):
             #
             # This is a flat-field
             #
