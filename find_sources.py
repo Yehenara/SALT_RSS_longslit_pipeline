@@ -167,7 +167,7 @@ def identify_sources(profile):
     # Approximate a continuum by applying a wider median filter
     #
     cont = scipy.ndimage.filters.median_filter(
-        input=prof, 
+        input=profile,
         size=(75), 
         footprint=None, 
         output=None, 
@@ -178,7 +178,7 @@ def identify_sources(profile):
     numpy.savetxt("prof.gauss1", smoothed)
     numpy.savetxt("prof.cont", cont)
 
-    signal = prof - cont
+    signal = profile - cont
     smooth_signal = (smoothed[:,0] - cont)
 
     #
@@ -270,8 +270,9 @@ def identify_sources(profile):
         source_stats[si, 2:4] = [left, right]
 
     numpy.savetxt(sys.stdout, source_stats, "%.1f")
+    numpy.savetxt("sources", source_stats)
 
-    return None
+    return source_stats
 
 if __name__ == "__main__":
 
@@ -280,8 +281,8 @@ if __name__ == "__main__":
 
     hdulist = pyfits.open(sys.argv[1])
 
-    prof = continuum_slit_profile(hdulist)
-    sources = identify_sources(prof)
+    profile = continuum_slit_profile(hdulist)
+    sources = identify_sources(profile)
 
 
     pysalt.mp_logging.shutdown_logging(logger_setup)
