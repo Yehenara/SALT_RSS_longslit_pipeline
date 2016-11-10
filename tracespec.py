@@ -174,7 +174,6 @@ if __name__ == "__main__":
         xbin = 1
 
     start = start_x,start_y
-
     data = hdulist['SKYSUB.OPT'].data
     pyfits.PrimaryHDU(data=data).writeto("tracespec.fits", clobber=True)
 
