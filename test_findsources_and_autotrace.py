@@ -42,12 +42,27 @@ if __name__ == "__main__":
     slopes, trace_offset = tracespec.compute_trace_slopes(spectrace_data)
 
     print "generating source profile in prep for optimal extraction"
-    optimal_extraction.generate_source_profile(
+    width = brightest[3]-brightest[2]
+    source_profile_2d = optimal_extraction.generate_source_profile(
         data=hdulist['SKYSUB.OPT'].data,
         variance=hdulist['VAR'].data,
+        wavelength=hdulist['WAVELENGTH'].data,
         trace_offset=trace_offset,
         position=[center_x, brightest[0]],
-        width=brightest[3]-brightest[2],
+        width=width,
     )
 
+    print source_profile_2d
+
+    #
+    # Now stack the profile along the spectral direction to compute the integrated profile we need for weighting
+    # during the optimal extraction.
+    #
+    supersample = 2
+    source_profile_1d = optimal_extraction.integrate_source_profile(
+        width=width,
+        supersample=supersample,
+        profile2d=source_profile_2d,
+        wl_resolution=-5,
+    )
 
