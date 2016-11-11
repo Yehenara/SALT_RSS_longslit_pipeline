@@ -223,10 +223,33 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     combined[:,1] = y.flatten()
     combined[:,2] = out_drizzle.flatten()
     numpy.savetxt("drizzled", combined)
+    numpy.savetxt("drizzled2", out_drizzle)
 
     #
     # Now integrate the drizzle spectrum along the slit to compute the relative contribution of each pixel.
     #
+    spec1d = numpy.sum(out_drizzle, axis=0)
+    print out_drizzle.shape, spec1d.shape
+    numpy.savetxt("spec1d", spec1d)
+
+    median_flux = numpy.median(spec1d)
+    print "median flux level:", median_flux
+    bad_data = spec1d < 0.05*median_flux
+    spec1d[bad_data] = numpy.NaN
+
+    drizzled_weight = out_drizzle / spec1d.reshape((1, -1))
+
+    # now we have bad columns set to NaN, this makes interpolation tricky
+    # therefore we fill in these areas with the global profile
+    no_data = numpy.isnan(drizzled_weight)
+    global_profile = numpy.sum(out_drizzle, axis=1)
+    global_profile /= numpy.sum(global_profile)
+    global_profile_2d = numpy.repeat(global_profile.reshape((-1, 1)), spec1d.shape[0], axis = 1)
+    print "global profile:", global_profile_2d.shape
+    drizzled_weight[no_data] = global_profile_2d[no_data]
+
+    combined[:,2] = drizzled_weight.flatten()
+    numpy.savetxt("drizzled.norm", combined)
 
     return None
 
