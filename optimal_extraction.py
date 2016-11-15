@@ -11,6 +11,19 @@ import itertools
 import find_sources
 import tracespec
 
+class OptimalWeight(object):
+
+    def __init__(self, wl_min, wl_step, y_min, y_step, data):
+        self.wl_min = wl_min
+        self.wl_step = wl_step
+        self.y_min = y_min
+        self.y_step = y_step
+        self.data = data
+
+    def get_weight(self, wl, y):
+
+        # find the closest
+        return 1.
 
 
 def generate_source_profile(data, variance, wavelength, trace_offset,
@@ -251,6 +264,26 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     combined[:,2] = drizzled_weight.flatten()
     numpy.savetxt("drizzled.norm", combined)
 
+    #
+    # Now we have a full 2-d distribution of extraction weights as fct. of dy and wavelength
+    #
+    print "computing final 2-d interpolator"
+    # weight_interpol = scipy.interpolate.interp2d(
+    #     x=combined[:,0],
+    #     y=combined[:,1],
+    #     z=combined[:,2],
+    #     kind='linear',
+    #     copy=True,
+    #     bounds_error=False,
+    #     fill_value=0.,
+    # )
+    weight_interpol = scipy.interpolate.RectBivariateSpline(
+        x=y_start,
+        y=wl_start,
+        z=drizzled_weight,
+        kx=1, ky=1,
+    )
+    print weight_interpol
     return None
 
     wl_width_1d = wl_width.ravel()
