@@ -24,6 +24,8 @@ import spline_pickle_test
 
 use_fast_edges = True
 
+save_debug = False
+
 def satisfy_schoenberg_whitney(data, basepoints, k=3):
 
     logger = logging.getLogger("SchoenbergWhitney")
@@ -55,7 +57,8 @@ def find_source_mask(img_data):
     flat = bottleneck.nanmedian(img_data.astype(numpy.float32), axis=1)
     print img_data.shape, flat.shape
 
-    numpy.savetxt("obj_mask.flat", flat)
+    if (save_debug):
+        numpy.savetxt("obj_mask.flat", flat)
 
     median_level = numpy.median(flat)
     print median_level
@@ -63,7 +66,8 @@ def find_source_mask(img_data):
 
     # do running median filter
     med_filt = scipy.ndimage.filters.median_filter(flat.reshape((-1,1)), size=49, mode='mirror')[:,0]
-    numpy.savetxt("obj_mask.medfilt", med_filt)
+    if (save_debug):
+        numpy.savetxt("obj_mask.medfilt", med_filt)
 
     excess = flat - med_filt
     good = numpy.isfinite(excess, dtype=numpy.bool)
@@ -80,7 +84,8 @@ def find_source_mask(img_data):
         print _med, _std
         good = (excess > _med-3*_std) & (excess < _med+3*_std)
         print numpy.sum(good)
-        numpy.savetxt("obj_mask.filter%d" % (i+1), combined[good])
+        if (save_debug):
+            numpy.savetxt("obj_mask.filter%d" % (i+1), combined[good])
         
     source = ~good
     print source
@@ -91,8 +96,9 @@ def find_source_mask(img_data):
         output=None, 
         mode='reflect', cval=0.0)
     print source_mask
-    
-    numpy.savetxt("obj_mask.src", combined[source_mask])
+
+    if (save_debug):
+        numpy.savetxt("obj_mask.src", combined[source_mask])
 
     return source_mask
 
@@ -357,7 +363,8 @@ def optimal_sky_subtraction(obj_hdulist,
         logger.info("No user-selected sky-regions, using full available frame")
 
     allskies = obj_cube #[::skiplength]
-    numpy.savetxt(debug_prefix+"xxx1", allskies)
+    if (save_debug):
+        numpy.savetxt(debug_prefix+"xxx1", allskies)
 
     # _x = fits.ImageHDU(data=obj_hdulist['SCI.RAW'].data, 
     #                      header=obj_hdulist['SCI.RAW'].header)
@@ -427,7 +434,8 @@ def optimal_sky_subtraction(obj_hdulist,
     # these represent interpolation errors
     k_wl = k_wl[k_wl>0]
 
-    numpy.savetxt(debug_prefix+"opt_basepoints",
+    if (save_debug):
+        numpy.savetxt(debug_prefix+"opt_basepoints",
                   numpy.append(k_wl.reshape((-1,1)),
                                k_cumflux.reshape((-1,1)),
                                axis=1)
@@ -477,10 +485,12 @@ def optimal_sky_subtraction(obj_hdulist,
         # Now merge the list of new basepoints with the existing list.
         # sort this list ot make it a suitable input for spline fitting
         #
-        numpy.savetxt(debug_prefix+"k_wl.in", k_wl)
+        if (save_debug):
+            numpy.savetxt(debug_prefix+"k_wl.in", k_wl)
         k_wl_new = numpy.append(k_wl, all_edge_points.flatten())
         k_wl = numpy.sort(k_wl_new)
-        numpy.savetxt(debug_prefix+"k_wl.out", k_wl)
+        if (save_debug):
+            numpy.savetxt(debug_prefix+"k_wl.out", k_wl)
 
     #############################################################################
     #
@@ -507,7 +517,8 @@ def optimal_sky_subtraction(obj_hdulist,
             #bbox=None, #[wl_min, wl_max], 
             k=3, # use a cubic spline fit
             )
-        numpy.savetxt(debug_prefix+"spline_orig", numpy.append(k_orig.reshape((-1,1)),
+        if (save_debug):
+            numpy.savetxt(debug_prefix+"spline_orig", numpy.append(k_orig.reshape((-1,1)),
                                                   spline_orig(k_orig).reshape((-1,1)),
                                                   axis=1)
                       )
@@ -521,8 +532,8 @@ def optimal_sky_subtraction(obj_hdulist,
     if (lots_of_debug):
         numpy.savetxt(debug_prefix+"allskies", allskies)
         fits.PrimaryHDU(data=allskies).writeto("allskies.fits", clobber=True)
-    numpy.savetxt(debug_prefix+"bp_in", k_wl)
-    numpy.savetxt(debug_prefix+"bp_out", k_opt_good)
+        numpy.savetxt(debug_prefix+"bp_in", k_wl)
+        numpy.savetxt(debug_prefix+"bp_out", k_opt_good)
 
     logger.info("Computing optimized sky-spectrum spline interpolator (%d data, %d base-points)" % (
         allskies.shape[0], k_opt_good.shape[0]
@@ -544,7 +555,8 @@ def optimal_sky_subtraction(obj_hdulist,
     spec_simple = numpy.append(k_wl.reshape((-1,1)),
                                              spline_opt(k_wl).reshape((-1,1)),
                                              axis=1)
-    numpy.savetxt(debug_prefix+"spline_opt", spec_simple)
+    if (save_debug):
+        numpy.savetxt(debug_prefix+"spline_opt", spec_simple)
 
     #
     #
@@ -621,8 +633,9 @@ def optimal_sky_subtraction(obj_hdulist,
                     bbox=[wl_min, wl_max], 
                     k=3, # use a cubic spline fit
                 )
-                
-        numpy.savetxt(debug_prefix+"spline_opt.iter%d" % (iteration+1),
+
+        if (save_debug):
+            numpy.savetxt(debug_prefix+"spline_opt.iter%d" % (iteration+1),
                       numpy.append(k_wl.reshape((-1,1)),
                                    spline_iter(k_wl).reshape((-1,1)),
                                    axis=1)
@@ -673,7 +686,8 @@ def optimal_sky_subtraction(obj_hdulist,
         # logger.debug("Estimating local scatter")
         # var = bottleneck.nanstd(delta_flux_2d, axis=1)
         #print "variance:", var.shape
-        numpy.savetxt(debug_prefix+"fit_variance.iter_%d" % (iteration+1),
+        if (save_debug):
+            numpy.savetxt(debug_prefix+"fit_variance.iter_%d" % (iteration+1),
                       numpy.append(k_iter_good.reshape((-1,1)),
                                    var.reshape((-1,1)), axis=1))
 
@@ -697,7 +711,8 @@ def optimal_sky_subtraction(obj_hdulist,
         var_at_pixel = std_interpol(good_data[:,0])
 
         logger.debug("Marking outliers for rejection in next iteration")
-        numpy.savetxt(debug_prefix+"pixelvar.%d" % (iteration+1),
+        if (save_debug):
+            numpy.savetxt(debug_prefix+"pixelvar.%d" % (iteration+1),
                       numpy.append(good_data[:,0].reshape((-1,1)),
                                    var_at_pixel.reshape((-1,1)), axis=1))
 
@@ -705,7 +720,8 @@ def optimal_sky_subtraction(obj_hdulist,
         not_outlier = numpy.fabs(dflux) < var_at_pixel
 
         good_data = good_data[not_outlier]
-        numpy.savetxt(debug_prefix+"good_after.%d" % (iteration+1),
+        if (save_debug):
+            numpy.savetxt(debug_prefix+"good_after.%d" % (iteration+1),
                       numpy.append(good_data[:,0].reshape((-1,1)),
                                    dflux[not_outlier].reshape((-1,1)), axis=1))
 
