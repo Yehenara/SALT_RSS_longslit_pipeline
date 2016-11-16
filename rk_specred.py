@@ -1863,10 +1863,10 @@ if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option("-w", "--wl", dest="wlmode",
                       help="How to create wavelength map (arc/sky/model)",
-                      default="sky")
+                      default="model")
     parser.add_option("-s", "--scale", dest="skyscaling",
                       help="How to scale the sky spectrum (none,s2d,p2d)",
-                      default="none")
+                      default="xxx")
     parser.add_option("-d", "--debug", dest="debug",
                        action="store_true", default=False)
     (options, cmdline_args) = parser.parse_args()
