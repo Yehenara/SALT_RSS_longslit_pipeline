@@ -103,6 +103,7 @@ import fiddle_slitflat2
 import wlmodel
 # this is just temporary to make debugging easier
 import spline_pickle_test
+import test_mask_out_obscured as find_obscured_regions
 
 wlmap_fitorder = [2, 2]
 
@@ -945,6 +946,14 @@ def specred(rawdir, prodir, options,
         img_data = numpy.array(hdu['SCI'].data)
 
         #
+        # Find bad rows that are not well exposed and likely contain no useful information
+        #
+        bad_rows = find_obscured_regions.find_obscured_regions(img_data)
+        img_data[bad_rows, :] = numpy.NaN
+
+
+
+        #
         # Also create the image without cosmic ray rejection, and add it to the 
         # output file
         #
@@ -988,6 +997,13 @@ def specred(rawdir, prodir, options,
             logger.info("Using ARC %s for wavelength calibration" % (good_arc))
 
         #
+        # Find a global slit profile to identify obscured regions (i.e. behind guide and/or focus probe)
+        #
+        img_raw = img_data.copy()
+        profile_raw_1d = numpy.mean(img_raw, axis=1)
+        print profile_raw_1d
+
+        #
         # Use ARC to trace lines and compute a 2-D wavelength solution
         #
         logger.info("Computing 2-D wavelength map")
@@ -1010,7 +1026,13 @@ def specred(rawdir, prodir, options,
         wls_2d = arc_hdu['WAVELENGTH'].data
 
         n_params = arc_hdu[0].header['WLSFIT_N']
-        hdu[0].header["WLSFIT_N"] = arc_hdu[0].header["WLSFIT_N"]
+        # copy a couple of relevant keywords
+        for key in ['RSSYCNTR', 'WCSFIT_N']:
+            if (key in arc_hdu[0].header):
+                hdu[0].header[key] = arc_hdu[0].header[key]
+            else:
+                logger.warning("Unable to find FITS keywords %s in %s" % (key, good_arc))
+        # hdu[0].header["WLSFIT_N"] = arc_hdu[0].header["WLSFIT_N"]
         wls_fit = numpy.zeros(n_params)
         for i in range(n_params):
             wls_fit[i] = arc_hdu[0].header['WLSFIT_%d' % (i)]
@@ -1068,6 +1090,16 @@ def specred(rawdir, prodir, options,
             fits.PrimaryHDU(data=(y / img_data)).writeto("img1.fits", clobber=True)
 
             # img_data /= intensity_profile.reshape((-1,1))
+        else:
+            skylines, skyline_list = prep_science.find_nightsky_lines(
+                data=numpy.array(hdu['SCI'].data),
+            )
+
+        print "FOUND NIGHT-SKY LINES:"
+        numpy.savetxt(sys.stdout, skyline_list, "%.3f")
+        numpy.savetxt("nightsky_lines", skyline_list)
+
+        hdu.append(prep_science.add_skylines_as_tbhdu(skyline_list))
 
         # logger.info("Adding xxx extension")
         # hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
@@ -1079,7 +1111,7 @@ def specred(rawdir, prodir, options,
         # With this flat-field we can extract a better sky spectrum, and later improve the sky-subtraction
         #
         logger.info("Computing 2-D flatfield from night sky intensity profile")
-        vph_flatfield, vph_flat_interpol = fiddle_slitflat2.create_2d_flatfield_from_sky(wls_2d, img_data)
+        vph_flatfield, vph_flat_interpol = fiddle_slitflat2.create_2d_flatfield_from_sky(wls_2d, img_data, bad_rows=bad_rows)
         flattened_img = img_data / vph_flatfield
         logger.info("Flattened image: %s" % (str(flattened_img.shape)))
 
