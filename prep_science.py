@@ -236,6 +236,46 @@ def exclude_lines_close_to_chipgaps(
 
 
 
+def find_nightsky_lines(
+        data, y_range=None, write_debug_data=False):
+
+    logger = logging.getLogger("NightskyFlats")
+
+    if (y_range is None):
+        y_range = [600, 620]
+
+    skylines, continuum = filter_isolate_skylines(data, write_debug_data=write_debug_data)
+
+    #
+    # Now find lines
+    #
+    logger.info("Searching for night-sky lines")
+    # nightsky_spec_1d = numpy.average(skylines[600:620,:], axis=0)
+    nightsky_spec_1d = numpy.average(data[y_range[0]:y_range[1], :], axis=0)
+    # print nightsky_spec_1d.shape
+    numpy.savetxt("nightsky", nightsky_spec_1d)
+    # wlcal.extract_arc_spectrum(fake_hdu, line=600,avg_width=30)
+
+
+    line_list = wlcal.find_list_of_lines(nightsky_spec_1d, readnoise=2,
+                                     avg_width=(y_range[1]-y_range[0]),
+                                     pre_smooth=2)
+    dum = StringIO.StringIO()
+    numpy.savetxt(dum, line_list)
+    logger.debug("Found these lines:\n%s" % (dum.getvalue()))
+
+    # print lines
+
+    return skylines, line_list
+
+
+def add_skylines_as_tbhdu(skyline_list):
+    column_names = ['X', 'INTENSITY', 'CONTINUUM', 'CONTINUUM_NOISE', 'S2N', 'WAVELENGTH']
+    columns = []
+    for i, colname in enumerate(column_names):
+        columns.append(fits.Column(name=colname, format='D', array=skyline_list[:,i], disp="F6.2"))
+
+    return fits.BinTableHDU.from_columns(fits.ColDefs(columns))
 
 
 def extract_skyline_intensity_profile(
