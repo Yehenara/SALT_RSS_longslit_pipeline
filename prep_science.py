@@ -275,7 +275,10 @@ def add_skylines_as_tbhdu(skyline_list):
     for i, colname in enumerate(column_names):
         columns.append(fits.Column(name=colname, format='D', array=skyline_list[:,i], disp="F6.2"))
 
-    return fits.BinTableHDU.from_columns(fits.ColDefs(columns))
+    tbhdu = fits.BinTableHDU.from_columns(fits.ColDefs(columns))
+    tbhdu.name = "SKYLINES"
+
+    return tbhdu
 
 
 def extract_skyline_intensity_profile(
