@@ -958,18 +958,22 @@ def specred(rawdir, prodir, options,
         # Also create the image without cosmic ray rejection, and add it to the 
         # output file
         #
-        # logger.info("Creating mosaiced frame WITHOUT cosmic-ray rejection")
-        # hdu_nocrj = salt_prepdata(filename,
-        #                           flatfield_frame=masterflat_filename,
-        #                           badpixelimage=None,
-        #                           create_variance=True,
-        #                           clean_cosmics=False,
-        #                           mosaic=True,
-        #                           verbose=False,
-        #                           )
-        # hdu_sci_nocrj = hdu_nocrj['SCI']
-        # hdu_sci_nocrj.name = 'SCI.NOCRJ'
-        # hdu.append(hdu_sci_nocrj)
+        logger.info("Creating mosaiced frame WITHOUT cosmic-ray rejection")
+        hdulist_crj = salt_prepdata(filename,
+                                  flatfield_frame=masterflat_filename,
+                                  badpixelimage=None,
+                                  create_variance=True,
+                                  clean_cosmics=False,
+                                  mosaic=True,
+                                  verbose=False,
+                                  )
+        #hdu_sci_nocrj = hdu_nocrj['SCI']
+        #hdu_sci_nocrj.name = 'SCI.NOCRJ'
+        #hdu.append(hdu_sci_nocrj)
+        hdu_crj = hdulist_crj['SCI']
+        hdu_crj.name = 'SCI.CRJ'
+        hdu.append(hdu_crj)
+
 
         # Make backup of the image BEFORE sky subtraction
         # make sure to copy the actual data, not just create a duplicate reference
@@ -1092,8 +1096,9 @@ def specred(rawdir, prodir, options,
 
             # img_data /= intensity_profile.reshape((-1,1))
         else:
+            in_data = hdu['SCI.CRJ'].data if 'SCI.CRJ' in hdu else hdu['SCI'].data
             skylines, skyline_list = prep_science.find_nightsky_lines(
-                data=numpy.array(hdu['SCI'].data),
+                data=numpy.array(in_data),
             )
 
         print "FOUND NIGHT-SKY LINES:"
