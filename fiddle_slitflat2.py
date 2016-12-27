@@ -43,9 +43,11 @@ def polyval2dx(x, y, m, order=[3,3]):
 from optscale import polyfit2d, polyval2d
 
 
-def create_2d_flatfield_from_sky(wl, img, reuse_profile=None):
+def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
 
     logger = logging.getLogger("Create2dVPHFlat")
+
+    logger.info("Input size::  img:%s wl:%s" % (str(img.shape), str(wl.shape)))
 
     n_wl_chunks = 60
     wl_min = numpy.min(wl)
@@ -59,6 +61,7 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None):
 
     profiles = numpy.empty((wl.shape[0], wl_centers.shape[0]))
     profiles[:,:] = numpy.NaN
+    print profiles.shape
 
     # prepare an undersampled y grid to keep processing times in check
     # based on this grid we can then interpolate up to the full resolution needed during reduction
@@ -81,14 +84,16 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None):
                 line_wl=cwl,
                 line_width=wl_steps,
                 n_iter=15,
-                polyorder=5)
+                polyorder=5,
+                bad_rows=bad_rows)
 
-            if (prof == None):
+            if (prof is None):
                 logger.debug("No data found for %f +/- %f" % (cwl, wl_steps))
                 continue
 
-            #print prof.shape
-            profiles[:,i_wl] = prof
+            print prof.shape, profiles.shape, profiles_sparse.shape
+
+            profiles[:,i_wl][~bad_rows] = prof
 
             profiles_sparse[:, i_wl] = numpy.polyval(poly, sparse_y)
 
