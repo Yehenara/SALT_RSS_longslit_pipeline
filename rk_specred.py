@@ -104,6 +104,7 @@ import wlmodel
 # this is just temporary to make debugging easier
 import spline_pickle_test
 import test_mask_out_obscured as find_obscured_regions
+import map_distortions
 
 wlmap_fitorder = [2, 2]
 
@@ -1096,10 +1097,21 @@ def specred(rawdir, prodir, options,
             )
 
         print "FOUND NIGHT-SKY LINES:"
-        numpy.savetxt(sys.stdout, skyline_list, "%.3f")
+        numpy.savetxt(sys.stdout, skyline_list, "%9.3f")
         numpy.savetxt("nightsky_lines", skyline_list)
 
         hdu.append(prep_science.add_skylines_as_tbhdu(skyline_list))
+
+        #
+        # Map wavelength distortions
+        #
+        distortions, distortions_binned = map_distortions.map_distortions(
+            wl_2d=wls_2d,
+            diff_2d=None,
+            img_2d = img_raw,
+            y=610,
+            x_list=skyline_list[:,0],
+        )
 
         # logger.info("Adding xxx extension")
         # hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
