@@ -7,6 +7,9 @@ import astropy.io.fits as fits
 import numpy
 import math
 import itertools
+import scipy
+import scipy.interpolate
+import logging
 
 import find_sources
 import tracespec
@@ -20,10 +23,53 @@ class OptimalWeight(object):
         self.y_step = y_step
         self.data = data
 
-    def get_weight(self, wl, y):
+        self.prepare()
 
-        # find the closest
-        return 1.
+    def prepare(self):
+        self.y_center = numpy.arange(self.data.shape[0], dtype=numpy.float) * self.y_step + 0.5*self.y_step + self.y_min
+        self.wl_center = numpy.arange(self.data.shape[1], dtype=numpy.float) * self.wl_step + 0.5*self.wl_step + self.wl_min
+
+        print "Y/wl:", self.y_center.shape, self.wl_center.shape
+
+        self.weight_interpol = scipy.interpolate.RectBivariateSpline(
+            x=self.y_center,
+            y=self.wl_center,
+            z=self.data,
+            kx=1, ky=1,
+        )
+        print self.weight_interpol
+
+    def get_weight(self, wl, y, mode='interpolate'):
+        #print wl, y
+        wl = numpy.array(wl)
+        y = numpy.array(y)
+
+        # find look-up indices for wl and y
+        # make sure they are in the valid range
+        i_wl = numpy.array((wl - self.wl_min) / self.wl_step, dtype=numpy.int)
+        i_wl[i_wl < 0] = 0
+        i_wl[i_wl >= self.data.shape[1]] = self.data.shape[1]-1
+
+        i_y = numpy.array((y - self.y_min) / self.y_step, dtype=numpy.int)
+        i_y[i_y < 0] = 0
+        i_y[i_y >= self.data.shape[0]] = self.data.shape[0]-1
+
+        #print i_wl,  i_y
+
+        weight = self.data[i_y, i_wl]
+        #print weight
+
+
+        # if (mode == 'interpolate'):
+        #     # find the closest
+        #     return self.weight_interpol(wl,y)
+        # else:
+        #     # pick the closest point based on wl and y
+        #     pass
+        #
+        # print "optimal weight @", wl_data_1d[px], y_data_1d[px], " == ", opt_weight
+        return weight
+
 
 
 def generate_source_profile(data, variance, wavelength, trace_offset,
@@ -69,9 +115,6 @@ def generate_source_profile(data, variance, wavelength, trace_offset,
 
     return combined
 
-
-import scipy
-import scipy.interpolate
 
 def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2d=None):
 
@@ -230,6 +273,11 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
         #if (_XXX > 20):
         #    break
 
+    #
+    # truncate negative pixels to 0
+    #
+    out_drizzle[out_drizzle<0] = 0.
+
     y,x = numpy.indices(out_drizzle.shape)
     combined = numpy.empty((x.shape[0]*x.shape[1], 3))
     combined[:,0] = x.flatten()
@@ -243,7 +291,7 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     #
     spec1d = numpy.sum(out_drizzle, axis=0)
     print out_drizzle.shape, spec1d.shape
-    numpy.savetxt("spec1d", spec1d)
+    numpy.savetxt("spec1d", numpy.append(wl_start.reshape((-1,1)), spec1d.reshape((-1,1)), axis=1))
 
     median_flux = numpy.median(spec1d)
     print "median flux level:", median_flux
@@ -264,10 +312,20 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     combined[:,2] = drizzled_weight.flatten()
     numpy.savetxt("drizzled.norm", combined)
 
+    #combined[:,2] = (drizzled_weight / numpy.sum(drizzled_weight, axis=0).reshape((1,-1))).flatten()
+    #numpy.savetxt("drizzled.normsum", combined)
+
     #
     # Now we have a full 2-d distribution of extraction weights as fct. of dy and wavelength
     #
+    #drizzled_weight[drizzled_weight<0] = 0
     print "computing final 2-d interpolator"
+    opt_weight = OptimalWeight(
+        wl_min=wl_min, wl_step=spec_resolution,
+        y_min=y_min, y_step=y_width,
+        data=drizzled_weight,
+    )
+
     # weight_interpol = scipy.interpolate.interp2d(
     #     x=combined[:,0],
     #     y=combined[:,1],
@@ -277,15 +335,265 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     #     bounds_error=False,
     #     fill_value=0.,
     # )
-    weight_interpol = scipy.interpolate.RectBivariateSpline(
-        x=y_start,
-        y=wl_start,
-        z=drizzled_weight,
-        kx=1, ky=1,
-    )
-    print weight_interpol
-    return None
+    return opt_weight
 
+
+
+
+
+def optimal_extract(img_data, wl_data, variance_data,
+                    trace_offset,
+                    opt_weight_center_y=None,
+                    optimal_weight=None,
+                    minwl=-1, maxwl=-1, dwl=-1,
+                    y_ranges=None,
+                    reference_x=None, reference_y=None,
+                    ):
+
+    logger = logging.getLogger("OptimalDrizzleSpec")
+
+    # load image data and wavelength map
+    # img_data = hdu[input_ext].data
+    # wl_data = hdu['WAVELENGTH'].data
+    # variance_data = hdu['VAR'].data
+
+    wl0 = minwl
+    wlmax = maxwl
+    if (minwl < 0):
+        wl0 = numpy.min(wl_data)
+    if (maxwl < 0):
+        wlmax = numpy.max(wl_data)
+    if (dwl < 0):
+        _disp = numpy.diff(wl_data)
+        dwl = 0.5 * numpy.min(_disp)
+        if (dwl <= 0):
+            dwl = 0.1
+
+    #
+    # determine a reference column, if not specified
+    # this is needed as the tracing introduces a dependency between y and x
+    #
+    if (reference_x is None):
+        reference_x = int(img_data.shape[1]/2)
+
+    # compute an effective y array that accounts for line shifts in y-direction
+    # (which is compensated with the line trace)
+    y_raw,_ = numpy.indices(img_data.shape, dtype=numpy.float)
+    if (reference_y is not None):
+        y_raw -= reference_y
+
+    dy0 = trace_offset[reference_x]
+    corrected_y = y_raw + 1.0 - trace_offset + dy0 # add 1 pixel for FITS conformity
+    logger.info("Trace offset at reference x=+%d: %f" % (reference_x, dy0))
+    numpy.savetxt("corrected_y", corrected_y.ravel())
+
+    # Now prepare the output array
+    out_wl_count = int((wlmax - wl0) / dwl) + 1
+    logger.info("output: %d wavelength points from %f to %f in steps of %f angstroems" % (
+        out_wl_count, wl0, wlmax, dwl))
+    out_wl = numpy.arange(out_wl_count, dtype=numpy.float) * dwl + wl0
+
+    spectra_1d = numpy.empty((out_wl_count, len(y_ranges)))
+    variance_1d = numpy.empty((out_wl_count, len(y_ranges)))
+
+    # pad the entire wavelength array so we know the wavelength range of each pixel
+    wl_data_padded = numpy.pad(wl_data, ((0, 0), (1, 1)), mode='edge')
+    wl_width = 0.5 * (wl_data_padded[:, 2:] - wl_data_padded[:, :-2])
+    wl_from = 0.5 * (wl_data_padded[:, 0:-2] + wl_data_padded[:, 1:-1])
+    wl_to = 0.5 * (wl_data_padded[:, 1:-1] + wl_data_padded[:, 2:])
+
+    for cur_yrange, _yrange in enumerate(y_ranges):
+
+        y1 = _yrange[0]
+        y2 = _yrange[1]
+        logger.info("Extracting 1-D spectrum from columns %d --- %d" % (y1, y2))
+
+        xxx = open("dump_%d-%d" % (y1, y2), "w")
+
+        #
+        # extract data
+        #
+        in_y_range = (corrected_y > (y1-0.5)) & (corrected_y <= (y2+0.5))
+        spec_img_data = img_data[in_y_range]
+        spec_wl_data = wl_data[in_y_range]
+        spec_var_data = variance_data[in_y_range]
+        spec_wl_from = wl_from[in_y_range]
+        spec_wl_to = wl_to[in_y_range]
+        spec_wl_width = wl_width[in_y_range]
+
+        spec_y_data = corrected_y[in_y_range]
+        if (opt_weight_center_y is None):
+            spec_y_data -= opt_weight_center_y
+
+        weight_data = numpy.ones_like(img_data, dtype=numpy.float)
+        if (optimal_weight is not None):
+            weight_data = optimal_weight.get_weight(wl=spec_wl_data, y=spec_y_data)
+            c = numpy.empty((spec_wl_data.ravel().shape[0], 3))
+            c[:,0] = spec_wl_data.ravel()
+            c[:,1] = spec_y_data.ravel()
+            c[:,2] = weight_data.ravel()
+            numpy.savetxt("weight_data", c)
+        # print img_data.shape, wl_data.shape
+
+        #
+        # prepare the output flux array, and initialize with NaNs
+        #
+        out_flux = numpy.zeros_like(out_wl)
+        out_flux[:] = numpy.NaN
+        out_var = numpy.zeros_like(out_wl)
+        out_var[:] = numpy.NaN
+        out_weight = numpy.zeros_like(out_wl)
+        # print out_wl
+
+        #
+        # prepare a padded WL array
+        #
+        # print wl_width.shape, wl_from.shape, wl_to.shape
+
+        # compute the flux density array (i.e. flux per wavelength) by dividing the
+        # flux image (which is flux integrated over the width of a pixel) by the width of each pixel
+        img_data_per_wl = spec_img_data / spec_wl_width
+        var_data_per_wl = spec_var_data / spec_wl_width
+
+        #
+        # now drizzle the data into the output container
+        #
+        wl_width_1d = spec_wl_width.ravel()
+        wl_from_1d = spec_wl_from.ravel()
+        wl_to_1d = spec_wl_to.ravel()
+        wl_data_1d = spec_wl_data.ravel()
+        img_data_per_wl_1d = img_data_per_wl.ravel()
+        var_data_1d = spec_var_data.ravel()
+        var_data_per_wl_1d = var_data_per_wl.ravel()
+        wl_width_1d = spec_wl_width.ravel()
+        y_data_1d = spec_y_data.ravel()
+        opt_weight_1d = weight_data.ravel()
+
+        for px in range(wl_width_1d.shape[0]):
+
+            # find first and last pixel in output array to receive some of the flux of this input pixel
+            first_px = (wl_from_1d[px] - wl0) / dwl
+            last_px = (wl_to_1d[px] - wl0) / dwl
+
+            opt_weight = 1.0
+            if (optimal_weight is not None):
+                opt_weight = opt_weight_1d[px]
+            if (opt_weight <= 0):
+                continue
+
+            #    opt_weight = optimal_weight.get_weight(wl=wl_data_1d[px], y=y_data_1d[px])
+            #    #print "optimal weight @", wl_data_1d[px], y_data_1d[px], " == ", opt_weight
+
+            pixels = range(int(math.floor(first_px)), int(math.ceil(last_px)))  # , dtype=numpy.int)
+            # print wl_data_1d[px], wl_width_1d[px], first_px, last_px, pixels
+            for i, tp in enumerate(pixels):
+
+                if (i == 0 and i == len(pixels) - 1):
+                    # all flux in a single output pixel
+                    fraction = last_px - first_px
+                elif (i == 0):
+                    # first pixel, with more to come
+                    fraction = (tp + 1.) - first_px
+                elif (i == len(pixels) - 1):
+                    # last of many pixels
+                    fraction = last_px - tp
+                else:
+                    # some pixel in the middle
+                    fraction = 1.
+
+                if (numpy.isnan(out_flux[tp])):
+                    out_flux[tp] = 0.
+                    out_var[tp] = 0.
+
+                # opt_weight = 1.
+
+                print >>xxx, px, tp, fraction, opt_weight, img_data_per_wl_1d[px], var_data_per_wl_1d[px], wl_data_1d[px], y_data_1d[px]
+
+                if (optimal_weight is not None):
+                    out_flux[tp] += fraction * (img_data_per_wl_1d[px] * opt_weight / var_data_per_wl_1d[px]) # * (dwl / wl_width_1d[px])
+                    out_var[tp] += (fraction * var_data_per_wl_1d[px]) * opt_weight # * (dwl / wl_width_1d[px])
+                    out_weight[tp] += (fraction * opt_weight**2 / var_data_per_wl_1d[px]) #(opt_weight**2 / var_data_per_wl_1d[px])
+                # print "     ", tp, fraction
+                else:
+                    out_flux[tp] += fraction * img_data_per_wl_1d[px]
+                    out_var[tp] += fraction * var_data_per_wl_1d[px]
+
+
+
+        x = numpy.empty((out_flux.shape[0],4))
+        x[:,0] = numpy.arange(out_flux.shape[0], dtype=numpy.float)*dwl+wl0
+        x[:,1] = out_flux[:]
+        x[:,2] = out_weight[:]
+        x[:,3] = out_var[:]
+        numpy.savetxt("shit", x)
+
+        #
+        # done with this 1-d extracted spectrum
+        #
+        numpy.savetxt("opt_weight", out_weight)
+        if (optimal_weight is None):
+            out_weight = numpy.ones_like(out_flux)
+
+        spectra_1d[:, cur_yrange] = (out_flux / out_weight)[:]
+        variance_1d[:, cur_yrange] = (out_var / out_weight)[:]
+        logger.debug("Done with 1-d extraction")
+
+    #
+    # Finally, merge wavelength data and flux and write output to file
+    #
+    output_format = "ascii"
+    out_fn = "opt_extract.dat"
+    if (output_format.lower() == "fits"):
+        logger.info("Writing FITS output to %s" % (out_fn))
+        # create the output multi-extension FITS
+        spec_3d = numpy.empty((2, spectra_1d.shape[1], spectra_1d.shape[0]))
+        spec_3d[0, :, :] = spectra_1d.T[:, :]
+        spec_3d[1, :, :] = variance_1d.T[:, :]
+
+        # numpy.append(spectra_1d.reshape((spectra_1d.shape[1], spectra_1d.shape[0], 1)),
+        #                    variance_1d.reshape((spectra_1d.shape[1], spectra_1d.shape[0], 1)),
+        #                     axis=2,
+        #                    )
+        print spec_3d.shape
+        hdulist = fits.HDUList([
+            fits.PrimaryHDU(header=hdu[0].header),
+            fits.ImageHDU(data=spectra_1d.T, name="SCI"),
+            fits.ImageHDU(data=variance_1d.T, name="VAR"),
+            fits.ImageHDU(data=spec_3d, name="SPEC3D")
+        ])
+        # add headers for the wavelength solution
+        for ext in ['SCI', 'VAR']:
+            hdulist[ext].header['WCSNAME'] = "calibrated wavelength"
+            hdulist[ext].header['CRPIX1'] = 1.
+            hdulist[ext].header['CRVAL1'] = wl0
+            hdulist[ext].header['CD1_1'] = dwl
+            hdulist[ext].header['CTYPE1'] = "AWAV"
+            hdulist[ext].header['CUNIT1'] = "Angstrom"
+            for i, yr in enumerate(y_ranges):
+                keyname = "YR_%03d" % (i + 1)
+                value = "%04d:%04d" % (yr[0], yr[1])
+                hdulist[ext].header[keyname] = (value, "y-range for aperture %d" % (i + 1))
+        hdulist.writeto(out_fn, clobber=True)
+    else:
+        logger.info("Writing output as ASCII to %s / %s.var" % (out_fn, out_fn))
+        numpy.savetxt(out_fn,
+                      numpy.append(out_wl.reshape((-1, 1)),
+                                   spectra_1d, axis=1))
+        numpy.savetxt(out_fn + ".var",
+                      numpy.append(out_wl.reshape((-1, 1)),
+                                   variance_1d, axis=1))
+
+    logger.debug("All done!")
+    # numpy.savetxt(out_fn+".perwl",
+    #               numpy.append(wl_data_1d.reshape((-1,1)),
+    #                            img_data_per_wl_1d.reshape((-1,1)), axis=1))
+    # numpy.savetxt(out_fn + ".raw",
+    #           numpy.append(wl_data_1d.reshape((-1, 1)),
+    #                        img_data.reshape((-1, 1)), axis=1))
+
+    return spectra_1d, variance_1d
+
+def dummy():
     wl_width_1d = wl_width.ravel()
     wl_from_1d = wl_from.ravel()
     wl_to_1d = wl_to.ravel()
@@ -332,9 +640,33 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
 
 if __name__ == "__main__":
 
-    fn = sys.argv[1]
-    print fn
+    # fn = sys.argv[1]
+    # print fn
+
+    # try to look up indices
+    wl_start = 5000
+    wl_step = 1
+    y_start = -50
+    y_step = 1
+    data = numpy.zeros((500, 100))
+
+    opt = OptimalWeight(
+        wl_min=wl_start, wl_step=wl_step,
+        y_min=y_start, y_step=y_step,
+        data=data)
+
+    print "\n\n\nTrying single value"
+    w = opt.get_weight(wl=5005, y=0)
+    print w
+
+    print "\n\n\nTrying 1-d array value"
+    w = opt.get_weight(wl=[5005, 5020, 5050], y=[0, -5, +10])
+    print w
 
 
-
+    print "\n\n\nTrying 2-d array"
+    wl = [[5005, 5007, 4999], [5002, 5009, 11000]]
+    y = [[0, 5, -10], [-76, 100, 0]]
+    w = opt.get_weight(wl=wl, y=y)
+    print w
 
