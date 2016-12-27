@@ -9,8 +9,11 @@ import numpy
 import find_sources
 import tracespec
 import optimal_extraction
+import pysalt.mp_logging
 
 if __name__ == "__main__":
+
+    logger = pysalt.mp_logging.setup_logging()
 
     fn = sys.argv[1]
 
@@ -59,10 +62,27 @@ if __name__ == "__main__":
     # during the optimal extraction.
     #
     supersample = 2
-    source_profile_1d = optimal_extraction.integrate_source_profile(
+    optimal_weight = optimal_extraction.integrate_source_profile(
         width=width,
         supersample=supersample,
         profile2d=source_profile_2d,
         wl_resolution=-5,
     )
+
+
+    optimal_extraction.optimal_extract(
+        img_data=hdulist['SKYSUB.OPT'].data,
+        wl_data=hdulist['WAVELENGTH'].data,
+        variance_data=hdulist['VAR'].data,
+        trace_offset=trace_offset,
+        optimal_weight=optimal_weight,
+        opt_weight_center_y=brightest[0],
+        reference_x=center_x,
+        reference_y=brightest[0],
+        y_ranges=[[-20, 20]],
+        dwl=0.5,
+    )
+
+    print brightest[0]
+    pysalt.mp_logging.shutdown_logging(logger)
 
