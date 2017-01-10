@@ -13,7 +13,7 @@ import bottleneck
 
 from pysalt import mp_logging
 
-def map_distortions(wl_2d, diff_2d, img_2d, y, x_list):
+def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None):
 
     distortions = [None] * len(x_list)
     distortions_binned = [None] * len(x_list)
@@ -54,6 +54,10 @@ def map_distortions(wl_2d, diff_2d, img_2d, y, x_list):
 
         for cur_y in range(wl_2d.shape[0]):
             in_range = (wl_2d[cur_y, :] > (wl-dwl)) & (wl_2d[cur_y, :] < (wl+dwl))
+
+            if (badrows is not None and badrows[cur_y]):
+                continue
+
             if (numpy.sum(in_range) <= 0):
                 continue
 
