@@ -952,7 +952,13 @@ def specred(rawdir, prodir, options,
         bad_rows = find_obscured_regions.find_obscured_regions(img_data)
         img_data[bad_rows, :] = numpy.NaN
 
-
+        #
+        # Save the bad-column data as image extension in the output frame
+        #
+        bad_rows_img = numpy.zeros((img_data.shape[0]), dtype=numpy.int)
+        bad_rows_img[bad_rows] = 1
+        bad_rows_ext = fits.ImageHDU(data=bad_rows_img, name="BADROWS")
+        hdu.append(bad_rows_ext)
 
         #
         # Also create the image without cosmic ray rejection, and add it to the 
@@ -963,7 +969,7 @@ def specred(rawdir, prodir, options,
                                   flatfield_frame=masterflat_filename,
                                   badpixelimage=None,
                                   create_variance=True,
-                                  clean_cosmics=False,
+                                  clean_cosmics=True,
                                   mosaic=True,
                                   verbose=False,
                                   )
@@ -1110,13 +1116,17 @@ def specred(rawdir, prodir, options,
         #
         # Map wavelength distortions
         #
-        distortions, distortions_binned = map_distortions.map_distortions(
-            wl_2d=wls_2d,
-            diff_2d=None,
-            img_2d = img_raw,
-            y=610,
-            x_list=skyline_list[:,0],
-        )
+        try:
+            print skyline_list.shape
+            distortions, distortions_binned = map_distortions.map_distortions(
+                wl_2d=wls_2d,
+                diff_2d=None,
+                img_2d = img_raw,
+                y=610,
+                x_list=skyline_list[:,0],
+            )
+        except:
+            pass
 
         # logger.info("Adding xxx extension")
         # hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
