@@ -148,7 +148,7 @@ physical
         x=wl_dist[:,0],
         y=wl_dist[:,1],
         z=wl_dist[:,2],
-        kx=1, ky=1,
+        kx=3, ky=3,
     )
 
     numpy.savetxt("interpol_in.x", wl_dist[:,0])
@@ -168,6 +168,16 @@ physical
     print distortion_2d.shape
 
     pyfits.PrimaryHDU(data=distortion_2d).writeto("distortion_2d.fits", clobber=True)
+
+    # compute residuals
+    model = interpol(x=wl_dist[:,0], y=wl_dist[:,1], grid=False)
+    residuals = wl_dist[:,2] - model
+
+    wl_dist[:,2] = model
+    numpy.savetxt("distortion_model.out", wl_dist)
+
+    wl_dist[:,2] = residuals
+    numpy.savetxt("distortion_model.residuals", wl_dist)
 
 
 
