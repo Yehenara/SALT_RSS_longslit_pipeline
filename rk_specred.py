@@ -105,6 +105,8 @@ import wlmodel
 import spline_pickle_test
 import test_mask_out_obscured as find_obscured_regions
 import map_distortions
+import model_distortions
+
 
 wlmap_fitorder = [2, 2]
 
@@ -877,6 +879,9 @@ def specred(rawdir, prodir, options,
     logger.info("\n\n\nProcessing OBJECT frames")
     arcinfos = {}
     for idx, filename in enumerate(obslog['OBJECT']):
+
+        hdu_appends = []
+
         _, fb = os.path.split(filename)
         _fb, _ = os.path.splitext(fb)
         hdulist = fits.open(filename)
@@ -958,7 +963,7 @@ def specred(rawdir, prodir, options,
         bad_rows_img = numpy.zeros((img_data.shape[0]), dtype=numpy.int)
         bad_rows_img[bad_rows] = 1
         bad_rows_ext = fits.ImageHDU(data=bad_rows_img, name="BADROWS")
-        hdu.append(bad_rows_ext)
+        hdu_appends.append(bad_rows_ext)
 
         #
         # Also create the image without cosmic ray rejection, and add it to the 
@@ -979,6 +984,7 @@ def specred(rawdir, prodir, options,
         hdu_crj = hdulist_crj['SCI']
         hdu_crj.name = 'SCI.CRJ'
         hdu.append(hdu_crj)
+        img_crjclean = hdu_crj.data
 
 
         # Make backup of the image BEFORE sky subtraction
@@ -1048,7 +1054,26 @@ def specred(rawdir, prodir, options,
         for i in range(n_params):
             wls_fit[i] = arc_hdu[0].header['WLSFIT_%d' % (i)]
             hdu[0].header['WLSFIT_%d' % (i)] = arc_hdu[0].header['WLSFIT_%d' % (i)]
+        hdu.append(fits.ImageHDU(data=wls_2d, name='WAVELENGTH.RAW'))
 
+        in_data = hdu['SCI.CRJ'].data if 'SCI.CRJ' in hdu else hdu['SCI'].data
+        skylines, skyline_list = prep_science.find_nightsky_lines(
+            data=numpy.array(in_data),
+        )
+
+        #
+        # Fit and include the wavelength distortion (based on sky-lines) in the wavelength calibration
+        #
+        distortion_2d, dist_quality = model_distortions.map_wavelength_distortions(
+            skyline_list=skyline_list,
+            wl_2d=wls_2d,
+            img_2d=img_crjclean,
+            diff_2d=None,
+            badrows=bad_rows_img,
+        )
+
+        wls_2d -= distortion_2d
+        hdu.append(fits.ImageHDU(data=distortion_2d, name='WAVELENGTH.DISTORTION'))
         hdu.append(fits.ImageHDU(data=wls_2d, name='WAVELENGTH'))
 
         fits.PrimaryHDU(data=img_data).writeto("img0.fits", clobber=True)
@@ -1102,16 +1127,13 @@ def specred(rawdir, prodir, options,
 
             # img_data /= intensity_profile.reshape((-1,1))
         else:
-            in_data = hdu['SCI.CRJ'].data if 'SCI.CRJ' in hdu else hdu['SCI'].data
-            skylines, skyline_list = prep_science.find_nightsky_lines(
-                data=numpy.array(in_data),
-            )
+            pass
 
         print "FOUND NIGHT-SKY LINES:"
         numpy.savetxt(sys.stdout, skyline_list, "%9.3f")
         numpy.savetxt("nightsky_lines", skyline_list)
 
-        hdu.append(prep_science.add_skylines_as_tbhdu(skyline_list))
+        hdu_appends.append(prep_science.add_skylines_as_tbhdu(skyline_list))
 
         #
         # Map wavelength distortions
@@ -1425,6 +1447,9 @@ def specred(rawdir, prodir, options,
                                   data=(cell_cleaned - median_sky),
                                   name="SKYSUB.OPT")
         hdu.append(final_hdu)
+
+
+        hdu.extend(hdu_appends)
 
         #
         # And finally write reduced frame back to disk
