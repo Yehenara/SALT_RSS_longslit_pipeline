@@ -17,6 +17,8 @@ import map_distortions
 
 def map_wavelength_distortions(skyline_list, wl_2d, img_2d, diff_2d=None, badrows=None, s2n_cutoff=5):
 
+    logger = logging.getLogger("ModelDistortions")
+
     print "        X      peak continuum   c.noise       S/N      WL/X"
     print "="*59
     numpy.savetxt(sys.stdout, skyline_list, "%9.3f")
@@ -30,7 +32,7 @@ def map_wavelength_distortions(skyline_list, wl_2d, img_2d, diff_2d=None, badrow
     #     n_pixels=img_size,
     #     min_signal_to_noise=10,
     #     )
-    print "Selecting %d of %d lines to compute distortion model" % (good_lines.shape[0], n_lines)
+    print "Selecting %d of %d lines to compute distortion model" % (good_lines.shape[0], skyline_list.shape[0])
     skyline_list = skyline_list[good_lines]
 
 
@@ -134,7 +136,7 @@ physical
     # Now compute a full 2-d grid of distortions as fct. of y and wavelength positions
     #
     print "computing 2-d distortion model"
-    wlmap =hdulist['WAVELENGTH'].data
+    wlmap = wl_2d #hdulist['WAVELENGTH'].data
     _y,_x = numpy.indices(wlmap.shape)
     distortion_2d = interpol(
         x=wlmap,
@@ -165,7 +167,6 @@ physical
 if __name__ == "__main__":
 
     logger_setup = mp_logging.setup_logging()
-    logger = logging.getLogger("ModelDistortions")
 
 
     fn = sys.argv[1]
