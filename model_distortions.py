@@ -14,31 +14,15 @@ import traceline
 
 import map_distortions
 
-if __name__ == "__main__":
 
-    logger_setup = mp_logging.setup_logging()
-    logger = logging.getLogger("ModelDistortions")
-
-
-    fn = sys.argv[1]
-    hdulist = pyfits.open(fn)
-
-    img_size = hdulist['SCI'].header['NAXIS1']
-
-    skytable_ext = hdulist['SKYLINES']
-
-    n_lines = skytable_ext.header['NAXIS2']
-    n_cols = skytable_ext.header['TFIELDS']
-    skyline_list = numpy.empty((n_lines, n_cols))
-    for i in range(n_cols):
-        skyline_list[:,i] = skytable_ext.data.field(i)
+def map_wavelength_distortions(skyline_list, wl_2d, img_2d, diff_2d=None, badrows=None, s2n_cutoff=5):
 
     print "        X      peak continuum   c.noise       S/N      WL/X"
     print "="*59
     numpy.savetxt(sys.stdout, skyline_list, "%9.3f")
     print "=" * 59
 
-    good_lines = numpy.isfinite(skyline_list[:,0]) & (skyline_list[:,4]>5)
+    good_lines = numpy.isfinite(skyline_list[:,0]) & (skyline_list[:,4]>s2n_cutoff)
     # good_lines = traceline.pick_line_every_separation(
     #     skyline_list,
     #     trace_every=5,
@@ -60,15 +44,6 @@ if __name__ == "__main__":
     # Now load all files for these lines
     #
     all_lines = [None] * skyline_list.shape[0]
-    wl_2d = hdulist['WAVELENGTH'].data
-    diff_2d = hdulist['SKYSUB.OPT'].data
-    img_2d = hdulist['SCI'].data
-
-    try:
-        badrows = hdulist['BADROWS'].data
-        badrows = badrows > 0
-    except:
-        badrows = None
 
     dist, dist_binned, bias_level, dist_median, dist_std,  = map_distortions.map_distortions(wl_2d=wl_2d,
                                                         diff_2d=diff_2d,
@@ -167,18 +142,70 @@ physical
         grid=False,)
     print distortion_2d.shape
 
-    pyfits.PrimaryHDU(data=distortion_2d).writeto("distortion_2d.fits", clobber=True)
 
     # compute residuals
     model = interpol(x=wl_dist[:,0], y=wl_dist[:,1], grid=False)
     residuals = wl_dist[:,2] - model
 
+    wl_dist_data = numpy.empty((wl_dist.shape[0], wl_dist.shape[1]+2))
+    wl_dist_data[:, :wl_dist.shape[1]] = wl_dist
+    wl_dist_data[:, -2] = model
+    wl_dist_data[:, -1] = residuals
+
     wl_dist[:,2] = model
     numpy.savetxt("distortion_model.out", wl_dist)
-
     wl_dist[:,2] = residuals
     numpy.savetxt("distortion_model.residuals", wl_dist)
 
+    return distortion_2d, wl_dist_data
 
+
+
+
+if __name__ == "__main__":
+
+    logger_setup = mp_logging.setup_logging()
+    logger = logging.getLogger("ModelDistortions")
+
+
+    fn = sys.argv[1]
+    hdulist = pyfits.open(fn)
+
+    img_size = hdulist['SCI'].header['NAXIS1']
+
+    skytable_ext = hdulist['SKYLINES']
+
+    n_lines = skytable_ext.header['NAXIS2']
+    n_cols = skytable_ext.header['TFIELDS']
+    skyline_list = numpy.empty((n_lines, n_cols))
+    for i in range(n_cols):
+        skyline_list[:,i] = skytable_ext.data.field(i)
+
+
+    wl_2d = hdulist['WAVELENGTH'].data
+    diff_2d = hdulist['SKYSUB.OPT'].data
+    img_2d = hdulist['SCI'].data
+
+    try:
+        badrows = hdulist['BADROWS'].data
+        badrows = badrows > 0
+    except:
+        badrows = None
+
+
+    distortion_2d, dist_quality = map_wavelength_distortions(
+        skyline_list=skyline_list,
+        wl_2d=wl_2d,
+        img_2d=img_2d,
+        diff_2d=diff_2d,
+        badrows=badrows
+    )
+
+    pyfits.PrimaryHDU(data=distortion_2d).writeto("distortion_2d.fits", clobber=True)
+    numpy.savetxt("distortion_model.quality", dist_quality)
 
     mp_logging.shutdown_logging(logger_setup)
+
+
+
+
