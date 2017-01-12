@@ -135,22 +135,28 @@ def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG',
     out_of_range = (wl < wl_min) | (wl > wl_max)
     data[out_of_range] = numpy.NaN
 
+    var = hdulist['VAR'].data.copy()
+    var[out_of_range] = numpy.NaN
+
     pyfits.PrimaryHDU(data=data).writeto("xxx", clobber=True)
 
     #intensity_profile = bottleneck.nansum(data, axis=1)
-    intensity_profile = numpy.nanmean(data, axis=1)
+    intensity_profile = numpy.nansum(data, axis=1)
+    intensity_error = numpy.nansum(var, axis=1)
+
     #print data.shape, intensity_profile.shape
 
     numpy.savetxt("prof", intensity_profile)
+    numpy.savetxt("prof.var", intensity_error)
 
     #
     # Apply wide median filter to subtract continuum slope (if any)
     #
 
-    return intensity_profile
+    return intensity_profile, intensity_error
 
 
-def identify_sources(profile):
+def identify_sources(profile, profile_var=None):
 
     logger = logging.getLogger("IdentifySources")
 
@@ -237,8 +243,9 @@ def identify_sources(profile):
     #
     # Compute slope product to test for slope continuity
     #
-    padded = numpy.zeros((smooth_signal.shape[0]+2))
-    padded[1:-1] = smooth_signal
+    slope_input = smoothed[:,0] # smooth_signal
+    padded = numpy.zeros((slope_input.shape[0]+2))
+    padded[1:-1] = slope_input
     d1 = padded[1:-1] - padded[0:-2]
     d2 = padded[1:-1] - padded[2:]
     slope_product = d1 * d2
