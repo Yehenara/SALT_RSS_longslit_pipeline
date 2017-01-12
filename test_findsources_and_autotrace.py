@@ -13,17 +13,30 @@ import pysalt.mp_logging
 
 if __name__ == "__main__":
 
-    logger = pysalt.mp_logging.setup_logging()
+    log_setup = pysalt.mp_logging.setup_logging()
 
     fn = sys.argv[1]
 
     hdulist = fits.open(fn)
 
     # compute a source list (includes source position, extent, and intensity)
-    prof = find_sources.continuum_slit_profile(hdulist)
-    sources = find_sources.identify_sources(prof)
+    prof, prof_var = find_sources.continuum_slit_profile(hdulist)
+    numpy.savetxt("source_profile", prof)
+    sources = find_sources.identify_sources(prof, prof_var)
 
+    print "="*50,"\n List of sources: \n","="*50
     print sources
+    print "\n-----"*5
+    with open("sources.reg", "w") as src_reg:
+        img = hdulist['SCI'].data
+        print >>src_reg, """\
+# Region file format: DS9 version 4.1
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+physical"""
+        for si in sources:
+            print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=red" % (si[0], img.shape[1], si[0])
+            print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=green" % (si[2], img.shape[1], si[2])
+            print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=green" % (si[3], img.shape[1], si[3])
 
     # now pick the brightest of all sources
     i_brightest = numpy.argmax(sources[:,1])
@@ -55,7 +68,7 @@ if __name__ == "__main__":
         width=width,
     )
 
-    print source_profile_2d
+    print "source-profile-2D:\n",source_profile_2d
 
     #
     # Now stack the profile along the spectral direction to compute the integrated profile we need for weighting
@@ -84,5 +97,5 @@ if __name__ == "__main__":
     )
 
     print brightest[0]
-    pysalt.mp_logging.shutdown_logging(logger)
+    pysalt.mp_logging.shutdown_logging(log_setup)
 
