@@ -12,7 +12,7 @@ import logging
 import bottleneck
 
 
-def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG'):
+def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG', subtract_sky=True):
 
     logger = logging.getLogger("ContSlitProfile")
 
@@ -23,7 +23,7 @@ def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG')
     y = data.shape[0]/2
     #sky1d = sky[y:y+1,:] #.reshape((-1,1))
     sky1d = sky[y,:] #.reshape((-1,1))
-    print sky1d.shape
+    logger.debug("sky1d-shape: %s" % (sky1d.shape))
 
     wl_1d = wl[y,:]
 
@@ -36,14 +36,14 @@ def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG')
         cval=0.0, 
         origin=0)
     
-    print mf.shape
+    #print mf.shape
 
     numpy.savetxt("sky", sky1d)
     numpy.savetxt("sky2", mf)
 
     # pick the intensity of the lowest 10%
     max_intensity = scipy.stats.scoreatpercentile(sky1d, [10,20])
-    print max_intensity
+    logger.debug("intensity at 10%%: %s" % (max_intensity))
 
     #
     # Find emission lines
@@ -56,12 +56,13 @@ def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG')
 
         no_line = (line_strength < med+2*std) & \
                   (line_strength > med-2*std)
-        print med, std, numpy.sum(no_line)
+        #print med, std, numpy.sum(no_line)
 
     #
     # Select regions that do not a sky-line within N pixels
     #
-    print line_strength.shape
+    logger.info("Looking for spectral regions without sky-lines")
+    #print line_strength.shape
     N = 15
     buffered = numpy.zeros(line_strength.shape[0]+2*N)
     buffered[N:-N][~no_line] = 1.0
@@ -107,7 +108,7 @@ def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG')
                 continue
 
     spec_blocks = numpy.array(spec_blocks)
-    print spec_blocks
+    logger.debug("spec-blocks:\n%s" % (spec_blocks))
 
     #
     # Now pick a block close to the center of the chip where the spectral
@@ -116,20 +117,20 @@ def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG')
     good_blocks = (spec_blocks[:,0] > 0.35*sky1d.shape[0]) & \
                   (spec_blocks[:,1] > 0.65*sky1d.shape[0])
     central_blocks = spec_blocks[good_blocks]
-    print central_blocks
+    #print central_blocks
 
     # Out of these, find the largest one
     block_size = central_blocks[:,1] - central_blocks[:,0]
-    print block_size
+    #print block_size
 
     largest_block = numpy.argmax(block_size)
 
     use_block = central_blocks[largest_block]
-    print "Using spectral block for source finding:", use_block
+    logger.info("Using spectral block for source finding: %s" % (use_block))
         
     wl_min = wl_1d[use_block[0]]
     wl_max = wl_1d[use_block[1]]
-    print "wavelength range: %f -- %f" % (wl_min, wl_max)
+    logger.info("wavelength range: %f -- %f" % (wl_min, wl_max))
 
     out_of_range = (wl < wl_min) | (wl > wl_max)
     data[out_of_range] = numpy.NaN
@@ -138,7 +139,7 @@ def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG')
 
     #intensity_profile = bottleneck.nansum(data, axis=1)
     intensity_profile = numpy.nanmean(data, axis=1)
-    print data.shape, intensity_profile.shape
+    #print data.shape, intensity_profile.shape
 
     numpy.savetxt("prof", intensity_profile)
 
@@ -188,7 +189,7 @@ def identify_sources(profile):
         stats = scipy.stats.scoreatpercentile(signal, [16,50,84], limit=[-1e9,1e9])
         one_sigma = (stats[2] - stats[0]) / 2.
         median = stats[1]
-        print iter, stats
+        #print iter, stats
         # mask all pixels outside the 3-sigma range as bad
         bad = (signal > (median + 3*one_sigma)) | (signal < (median - 3*one_sigma))
         signal[bad] = numpy.NaN
@@ -199,7 +200,7 @@ def identify_sources(profile):
     # sources are
     #
     noise_level = numpy.var(signal[numpy.isfinite(signal)])
-    print one_sigma, noise_level
+    logger.debug("Noise level: %f / %f" % (one_sigma, noise_level))
 
     peaks = scipy.signal.find_peaks_cwt(
         vector=(smoothed[:,0]-cont), 
@@ -212,25 +213,25 @@ def identify_sources(profile):
         noise_perc=10,
         )
     peaks = numpy.array(peaks)
-    print peaks
+    logger.debug("Raw peak list:\n%s" % (peaks))
     
     #
     # Now we have a bunch of potential sources
     # make sure they are significant enough
     #
     peak_intensities = smooth_signal[peaks]
-    print peak_intensities
+    #print peak_intensities
     s2n = peak_intensities / noise_level
-    print s2n
+    #print s2n
 
     # above threshold
     significant = (s2n > 3.)
     threshold = 3 * noise_level
-    print significant
+    #print significant
 
-    print type(peaks)
+    #print type(peaks)
 
-    print "final list of peaks:", peaks[significant]
+    logger.debug("final list of peaks: %s" % (peaks[significant]))
     sources = peaks[significant]
 
     #
@@ -257,19 +258,19 @@ def identify_sources(profile):
 
     pixel_coord = numpy.arange(smooth_signal.shape[0])
     for si, source in enumerate(sources):
-        print source
+        #print source
         out_of_source = (smooth_signal < threshold) & (slope_product > 0)
 
         on_left = pixel_coord < source
         on_right = pixel_coord > source
         left = numpy.max(pixel_coord[out_of_source & on_left])
         right = numpy.min(pixel_coord[out_of_source & on_right])
-        print left, right
-        print
+        #print left, right
+        #print
 
         source_stats[si, 2:4] = [left, right]
 
-    numpy.savetxt(sys.stdout, source_stats, "%.1f")
+    #numpy.savetxt(sys.stdout, source_stats, "%.1f")
     numpy.savetxt("sources", source_stats)
 
     return source_stats
