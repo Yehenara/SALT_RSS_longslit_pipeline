@@ -31,6 +31,8 @@ class OptimalWeight(object):
 
         print "Y/wl:", self.y_center.shape, self.wl_center.shape
 
+        self.profile1d = numpy.mean(self.data, axis=1)
+
         self.weight_interpol = scipy.interpolate.RectBivariateSpline(
             x=self.y_center,
             y=self.wl_center,
@@ -69,6 +71,15 @@ class OptimalWeight(object):
         #
         # print "optimal weight @", wl_data_1d[px], y_data_1d[px], " == ", opt_weight
         return weight
+
+    def get_normalization(self, y1, y2):
+
+        in_range = (self.y_center > y1) & (self.y_center < y2)
+        cutout_1d = self.profile1d[in_range]
+
+        return numpy.sum(cutout_1d)
+
+
 
 
 
@@ -276,7 +287,8 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     #
     # truncate negative pixels to 0
     #
-    out_drizzle[out_drizzle<0] = 0.
+    fits.PrimaryHDU(data=out_drizzle).writeto("out_drizzle0.fits", clobber=True)
+    #out_drizzle[out_drizzle<0] = 0.
 
     y,x = numpy.indices(out_drizzle.shape)
     combined = numpy.empty((x.shape[0]*x.shape[1], 3))
@@ -285,6 +297,7 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     combined[:,2] = out_drizzle.flatten()
     numpy.savetxt("drizzled", combined)
     numpy.savetxt("drizzled2", out_drizzle)
+    fits.PrimaryHDU(data=out_drizzle).writeto("out_drizzle.fits", clobber=True)
 
     #
     # Now integrate the drizzle spectrum along the slit to compute the relative contribution of each pixel.
@@ -292,6 +305,8 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     spec1d = numpy.sum(out_drizzle, axis=0)
     print out_drizzle.shape, spec1d.shape
     numpy.savetxt("spec1d", numpy.append(wl_start.reshape((-1,1)), spec1d.reshape((-1,1)), axis=1))
+    numpy.savetxt("optprofile1d", numpy.sum(out_drizzle, axis=1))
+    numpy.savetxt("optprofile1d.mean", numpy.mean(out_drizzle, axis=1))
 
     median_flux = numpy.median(spec1d)
     print "median flux level:", median_flux
@@ -311,9 +326,17 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
 
     combined[:,2] = drizzled_weight.flatten()
     numpy.savetxt("drizzled.norm", combined)
-
+    fits.PrimaryHDU(data=drizzled_weight).writeto("drizzled-weight.fits", clobber=True)
     #combined[:,2] = (drizzled_weight / numpy.sum(drizzled_weight, axis=0).reshape((1,-1))).flatten()
     #numpy.savetxt("drizzled.normsum", combined)
+
+    numpy.savetxt("drizzled.1d", numpy.mean(drizzled_weight, axis=1))
+
+    #
+    # Finally, limit all negative pixels to 0
+    #
+    drizzled_weight[drizzled_weight<0] = 0.
+    numpy.savetxt("drizzled.1dv2", numpy.mean(drizzled_weight, axis=1))
 
     #
     # Now we have a full 2-d distribution of extraction weights as fct. of dy and wavelength
@@ -378,6 +401,9 @@ def optimal_extract(img_data, wl_data, variance_data,
 
     # compute an effective y array that accounts for line shifts in y-direction
     # (which is compensated with the line trace)
+    #
+    # This essentially sets the center of the extraction region !!!
+    #
     y_raw,_ = numpy.indices(img_data.shape, dtype=numpy.float)
     if (reference_y is not None):
         y_raw -= reference_y
@@ -420,19 +446,30 @@ def optimal_extract(img_data, wl_data, variance_data,
         spec_wl_from = wl_from[in_y_range]
         spec_wl_to = wl_to[in_y_range]
         spec_wl_width = wl_width[in_y_range]
+        logger.info("total # of input pixels: %d" % (spec_img_data.size))
 
         spec_y_data = corrected_y[in_y_range]
-        if (opt_weight_center_y is None):
-            spec_y_data -= opt_weight_center_y
+        numpy.savetxt("spec_y_data", spec_y_data)
+        # if (opt_weight_center_y is not None):
+        #     logger.info("correcting extraction center to match optimal extraction weights")
+        #     spec_y_data -= opt_weight_center_y
+        # numpy.savetxt("spec_y_data2", spec_y_data)
 
         weight_data = numpy.ones_like(img_data, dtype=numpy.float)
         if (optimal_weight is not None):
-            weight_data = optimal_weight.get_weight(wl=spec_wl_data, y=spec_y_data)
+            logger.info("Computing optimal extraction weights for all input pixels")
+            weight_data = optimal_weight.get_weight(
+                wl=spec_wl_data, y=spec_y_data)
             c = numpy.empty((spec_wl_data.ravel().shape[0], 3))
             c[:,0] = spec_wl_data.ravel()
             c[:,1] = spec_y_data.ravel()
             c[:,2] = weight_data.ravel()
             numpy.savetxt("weight_data", c)
+
+            optimal_normalization = optimal_weight.get_normalization(y1,y2)
+            logger.info("Using relative normalization of %f" % (optimal_normalization))
+        else:
+            optimal_normalization = 1.0
         # print img_data.shape, wl_data.shape
 
         #
@@ -443,6 +480,7 @@ def optimal_extract(img_data, wl_data, variance_data,
         out_var = numpy.zeros_like(out_wl)
         out_var[:] = numpy.NaN
         out_weight = numpy.zeros_like(out_wl)
+        out_weight2 = numpy.zeros_like(out_wl)
         # print out_wl
 
         #
@@ -505,26 +543,33 @@ def optimal_extract(img_data, wl_data, variance_data,
                     out_flux[tp] = 0.
                     out_var[tp] = 0.
 
-                # opt_weight = 1.
-
                 print >>xxx, px, tp, fraction, opt_weight, img_data_per_wl_1d[px], var_data_per_wl_1d[px], wl_data_1d[px], y_data_1d[px]
 
+                #opt_weight = 1.
+
                 if (optimal_weight is not None):
-                    out_flux[tp] += fraction * (img_data_per_wl_1d[px] * opt_weight / var_data_per_wl_1d[px]) # * (dwl / wl_width_1d[px])
+                #     out_flux[tp] += fraction * (img_data_per_wl_1d[px] * opt_weight / var_data_per_wl_1d[px]) # * (dwl / wl_width_1d[px])
+                #     out_var[tp] += (fraction * var_data_per_wl_1d[px]) * opt_weight # * (dwl / wl_width_1d[px])
+                #     out_weight[tp] += (fraction * opt_weight**2 / var_data_per_wl_1d[px]) #(opt_weight**2 / var_data_per_wl_1d[px])
+                # # print "     ", tp, fraction
+
+                    out_flux[tp] += (fraction * img_data_per_wl_1d[px]) * opt_weight #/ var_data_per_wl_1d[px]) # * (dwl / wl_width_1d[px])
                     out_var[tp] += (fraction * var_data_per_wl_1d[px]) * opt_weight # * (dwl / wl_width_1d[px])
-                    out_weight[tp] += (fraction * opt_weight**2 / var_data_per_wl_1d[px]) #(opt_weight**2 / var_data_per_wl_1d[px])
-                # print "     ", tp, fraction
+                    out_weight2[tp] += fraction #opt_weight #(fraction * opt_weight**2 / var_data_per_wl_1d[px]) #(opt_weight**2 / var_data_per_wl_1d[px])
+                    out_weight[tp] += fraction * opt_weight
+
                 else:
                     out_flux[tp] += fraction * img_data_per_wl_1d[px]
                     out_var[tp] += fraction * var_data_per_wl_1d[px]
 
 
 
-        x = numpy.empty((out_flux.shape[0],4))
+        x = numpy.empty((out_flux.shape[0],5))
         x[:,0] = numpy.arange(out_flux.shape[0], dtype=numpy.float)*dwl+wl0
         x[:,1] = out_flux[:]
         x[:,2] = out_weight[:]
         x[:,3] = out_var[:]
+        x[:,4] = out_weight2[:]
         numpy.savetxt("shit", x)
 
         #
