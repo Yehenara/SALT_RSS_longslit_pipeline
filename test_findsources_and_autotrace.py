@@ -9,7 +9,10 @@ import numpy
 import find_sources
 import tracespec
 import optimal_extraction
+import zero_background
 import pysalt.mp_logging
+
+import pickle
 
 if __name__ == "__main__":
 
@@ -38,6 +41,12 @@ physical"""
             print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=green" % (si[2], img.shape[1], si[2])
             print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=green" % (si[3], img.shape[1], si[3])
 
+    fullframe_background = zero_background.find_background_correction(
+        hdulist=hdulist,
+        sources=sources,
+    )
+    hdulist['SKYSUB.OPT'].data -= fullframe_background
+
     # now pick the brightest of all sources
     i_brightest = numpy.argmax(sources[:,1])
     print i_brightest
@@ -58,7 +67,7 @@ physical"""
     slopes, trace_offset = tracespec.compute_trace_slopes(spectrace_data)
 
     print "generating source profile in prep for optimal extraction"
-    width = brightest[3]-brightest[2]
+    width = 2*(brightest[3]-brightest[2])
     source_profile_2d = optimal_extraction.generate_source_profile(
         data=hdulist['SKYSUB.OPT'].data,
         variance=hdulist['VAR'].data,
@@ -68,21 +77,26 @@ physical"""
         width=width,
     )
 
-    print "source-profile-2D:\n",source_profile_2d
+    print "source-profile-2D:\n",source_profile_2d,"\n", source_profile_2d.shape
 
     #
-    # Now stack the profile along the spectral direction to compute the integrated profile we need for weighting
-    # during the optimal extraction.
+    # Now stack the profile along the spectral direction to compute the
+    # integrated profile we need for weighting during the optimal extraction.
     #
+
     supersample = 2
+    pickle.dump(
+        (width, supersample, source_profile_2d), open("optimal_extract.pickle", "wb")
+    )
     optimal_weight = optimal_extraction.integrate_source_profile(
         width=width,
         supersample=supersample,
         profile2d=source_profile_2d,
         wl_resolution=-5,
     )
+    # optimal weight is an instance of the OptimalWeight class
 
-
+    d_width = brightest[2:4] - brightest[0]
     optimal_extraction.optimal_extract(
         img_data=hdulist['SKYSUB.OPT'].data,
         wl_data=hdulist['WAVELENGTH'].data,
@@ -92,7 +106,9 @@ physical"""
         opt_weight_center_y=brightest[0],
         reference_x=center_x,
         reference_y=brightest[0],
-        y_ranges=[[-20, 20]],
+        y_ranges=[[-25, 25]],
+        # y_ranges=[[-20, 20]],
+        #y_ranges=[d_width],
         dwl=0.5,
     )
 
