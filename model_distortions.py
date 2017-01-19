@@ -14,7 +14,6 @@ import traceline
 
 import map_distortions
 
-
 def map_wavelength_distortions(skyline_list, wl_2d, img_2d, diff_2d=None, badrows=None, s2n_cutoff=5):
 
     logger = logging.getLogger("ModelDistortions")

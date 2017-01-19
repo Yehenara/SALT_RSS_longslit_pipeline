@@ -507,6 +507,11 @@ def optimal_extract(img_data, wl_data, variance_data,
         y_data_1d = spec_y_data.ravel()
         opt_weight_1d = weight_data.ravel()
 
+        n_out_y = y2 - y1 + 4
+        y_min = y1 - 2.
+        drizzled_flux = numpy.zeros((out_wl_count, n_out_y))
+        drizzled_var = numpy.zeros((out_wl_count, n_out_y))
+
         for px in range(wl_width_1d.shape[0]):
 
             # find first and last pixel in output array to receive some of the flux of this input pixel
@@ -539,28 +544,39 @@ def optimal_extract(img_data, wl_data, variance_data,
                     # some pixel in the middle
                     fraction = 1.
 
-                if (numpy.isnan(out_flux[tp])):
-                    out_flux[tp] = 0.
-                    out_var[tp] = 0.
+                iy = int(math.floor(y_data_1d[px] - y_min))
 
-                print >>xxx, px, tp, fraction, opt_weight, img_data_per_wl_1d[px], var_data_per_wl_1d[px], wl_data_1d[px], y_data_1d[px]
+                drizzled_flux[tp,iy] += fraction * img_data_per_wl_1d[px]
+                drizzled_var[tp,iy] += fraction * var_data_per_wl_1d[px]
 
-                #opt_weight = 1.
+        _x,_y = numpy.indices((drizzled_flux.shape))
+        _y += y_min
+        _x = _x * dwl + wl0
+        numpy.savetxt("drizzled_spec.2d",
+                      numpy.array([_x.ravel(), _y.ravel(), drizzled_flux.ravel(), drizzled_var.ravel()]).T)
 
-                if (optimal_weight is not None):
-                #     out_flux[tp] += fraction * (img_data_per_wl_1d[px] * opt_weight / var_data_per_wl_1d[px]) # * (dwl / wl_width_1d[px])
+                # if (numpy.isnan(out_flux[tp])):
+                #     out_flux[tp] = 0.
+                #     out_var[tp] = 0.
+                #
+                # print >>xxx, px, tp, fraction, opt_weight, img_data_per_wl_1d[px], var_data_per_wl_1d[px], wl_data_1d[px], y_data_1d[px]
+                #
+                # #opt_weight = 1.
+                #
+                # if (optimal_weight is not None):
+                # #     out_flux[tp] += fraction * (img_data_per_wl_1d[px] * opt_weight / var_data_per_wl_1d[px]) # * (dwl / wl_width_1d[px])
+                # #     out_var[tp] += (fraction * var_data_per_wl_1d[px]) * opt_weight # * (dwl / wl_width_1d[px])
+                # #     out_weight[tp] += (fraction * opt_weight**2 / var_data_per_wl_1d[px]) #(opt_weight**2 / var_data_per_wl_1d[px])
+                # # # print "     ", tp, fraction
+                #
+                #     out_flux[tp] += (fraction * img_data_per_wl_1d[px]) * opt_weight #/ var_data_per_wl_1d[px]) # * (dwl / wl_width_1d[px])
                 #     out_var[tp] += (fraction * var_data_per_wl_1d[px]) * opt_weight # * (dwl / wl_width_1d[px])
-                #     out_weight[tp] += (fraction * opt_weight**2 / var_data_per_wl_1d[px]) #(opt_weight**2 / var_data_per_wl_1d[px])
-                # # print "     ", tp, fraction
-
-                    out_flux[tp] += (fraction * img_data_per_wl_1d[px]) * opt_weight #/ var_data_per_wl_1d[px]) # * (dwl / wl_width_1d[px])
-                    out_var[tp] += (fraction * var_data_per_wl_1d[px]) * opt_weight # * (dwl / wl_width_1d[px])
-                    out_weight2[tp] += fraction #opt_weight #(fraction * opt_weight**2 / var_data_per_wl_1d[px]) #(opt_weight**2 / var_data_per_wl_1d[px])
-                    out_weight[tp] += fraction * opt_weight
-
-                else:
-                    out_flux[tp] += fraction * img_data_per_wl_1d[px]
-                    out_var[tp] += fraction * var_data_per_wl_1d[px]
+                #     out_weight2[tp] += fraction #opt_weight #(fraction * opt_weight**2 / var_data_per_wl_1d[px]) #(opt_weight**2 / var_data_per_wl_1d[px])
+                #     out_weight[tp] += fraction * opt_weight
+                #
+                # else:
+                #     out_flux[tp] += fraction * img_data_per_wl_1d[px]
+                #     out_var[tp] += fraction * var_data_per_wl_1d[px]
 
 
 

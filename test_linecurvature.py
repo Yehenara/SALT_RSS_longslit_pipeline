@@ -28,17 +28,20 @@ if __name__ == "__main__":
     # wl_pick = wlmap[:, x_start]
     # print wl_pick
     #
-    img_padded = numpy.pad(hdulist['SCI'].data,
+    img_data = hdulist['SCI'].data
+    img_data /= hdulist['SKY.SCALE'].data
+
+    img_padded = numpy.pad(img_data,
                            pad_width=((0,0), (width,width)),
                            mode='constant',)
     print img_padded.shape, hdulist['SCI'].data.shape
 
-    #x_start += width
 
+    x_start += width
     cutout = numpy.empty((wlmap.shape[0], 2*width+1))
     for iy in range(cutout.shape[0]):
         print iy, wlmap[iy,x_start[iy]]
-        cutout[iy,:] = hdulist['SCI'].data[iy, x_start[iy]-width:x_start[iy]+width+1]
+        cutout[iy,:] = img_padded[iy, x_start[iy]-width:x_start[iy]+width+1]
     #cutout = hdulist['SCI'].data[x_start-width:x_start+width]
     print cutout.shape
 
