@@ -96,6 +96,22 @@ physical"""
     )
     # optimal weight is an instance of the OptimalWeight class
 
+    y_ranges = [[-25,25]]
+    try:
+        user_ap = sys.argv[2]
+    except:
+        user_ap = None
+    if (user_ap is not None):
+        if (user_ap == "auto"):
+            y_ranges = [brightest[2:4] - brightest[0]]
+        else:
+            y_ranges = []
+            for block in user_ap.split(","):
+                y12 = [int(d) for d in block.split(":")]
+                y_ranges.append(y12[:2])
+
+    print("Extracting sources for these apertures: %s" % (str(y_ranges)))
+
     d_width = brightest[2:4] - brightest[0]
     optimal_extraction.optimal_extract(
         img_data=hdulist['SKYSUB.OPT'].data,
@@ -106,9 +122,10 @@ physical"""
         opt_weight_center_y=brightest[0],
         reference_x=center_x,
         reference_y=brightest[0],
-        y_ranges=[[-25, 25]],
+        # y_ranges=[[-25, 25]],
         # y_ranges=[[-20, 20]],
         #y_ranges=[d_width],
+        y_ranges=y_ranges,
         dwl=0.5,
     )
 
