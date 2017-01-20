@@ -419,8 +419,8 @@ def optimal_extract(img_data, wl_data, variance_data,
         out_wl_count, wl0, wlmax, dwl))
     out_wl = numpy.arange(out_wl_count, dtype=numpy.float) * dwl + wl0
 
-    spectra_1d = numpy.empty((out_wl_count, len(y_ranges)))
-    variance_1d = numpy.empty((out_wl_count, len(y_ranges)))
+    spectra_1d = numpy.empty((out_wl_count, len(y_ranges), 3))
+    variance_1d = numpy.empty((out_wl_count, len(y_ranges), 3))
 
     # pad the entire wavelength array so we know the wavelength range of each pixel
     wl_data_padded = numpy.pad(wl_data, ((0, 0), (1, 1)), mode='edge')
@@ -440,6 +440,12 @@ def optimal_extract(img_data, wl_data, variance_data,
         # extract data
         #
         in_y_range = (corrected_y > (y1-0.5)) & (corrected_y <= (y2+0.5))
+        n_pixels_in_spec = numpy.sum(in_y_range)
+        if (n_pixels_in_spec <= 0):
+            logger.error("Invalid Y-range: %f - %f, continuing with next "
+                         "aperture" % (y1,y2))
+            continue
+
         spec_img_data = img_data[in_y_range]
         spec_wl_data = wl_data[in_y_range]
         spec_var_data = variance_data[in_y_range]
@@ -511,6 +517,7 @@ def optimal_extract(img_data, wl_data, variance_data,
         y_min = y1 - 2.
         drizzled_flux = numpy.zeros((out_wl_count, n_out_y))
         drizzled_var = numpy.zeros((out_wl_count, n_out_y))
+        drizzled_npix = numpy.zeros((out_wl_count, n_out_y))
 
         for px in range(wl_width_1d.shape[0]):
 
@@ -548,55 +555,96 @@ def optimal_extract(img_data, wl_data, variance_data,
 
                 drizzled_flux[tp,iy] += fraction * img_data_per_wl_1d[px]
                 drizzled_var[tp,iy] += fraction * var_data_per_wl_1d[px]
+                drizzled_npix[tp,iy] += fraction
 
-        _x,_y = numpy.indices((drizzled_flux.shape))
+        _x,_y = numpy.indices((drizzled_flux.shape), dtype=numpy.float)
         _y += y_min
         _x = _x * dwl + wl0
-        numpy.savetxt("drizzled_spec.2d",
-                      numpy.array([_x.ravel(), _y.ravel(), drizzled_flux.ravel(), drizzled_var.ravel()]).T)
 
-                # if (numpy.isnan(out_flux[tp])):
-                #     out_flux[tp] = 0.
-                #     out_var[tp] = 0.
-                #
-                # print >>xxx, px, tp, fraction, opt_weight, img_data_per_wl_1d[px], var_data_per_wl_1d[px], wl_data_1d[px], y_data_1d[px]
-                #
-                # #opt_weight = 1.
-                #
-                # if (optimal_weight is not None):
-                # #     out_flux[tp] += fraction * (img_data_per_wl_1d[px] * opt_weight / var_data_per_wl_1d[px]) # * (dwl / wl_width_1d[px])
-                # #     out_var[tp] += (fraction * var_data_per_wl_1d[px]) * opt_weight # * (dwl / wl_width_1d[px])
-                # #     out_weight[tp] += (fraction * opt_weight**2 / var_data_per_wl_1d[px]) #(opt_weight**2 / var_data_per_wl_1d[px])
-                # # # print "     ", tp, fraction
-                #
-                #     out_flux[tp] += (fraction * img_data_per_wl_1d[px]) * opt_weight #/ var_data_per_wl_1d[px]) # * (dwl / wl_width_1d[px])
-                #     out_var[tp] += (fraction * var_data_per_wl_1d[px]) * opt_weight # * (dwl / wl_width_1d[px])
-                #     out_weight2[tp] += fraction #opt_weight #(fraction * opt_weight**2 / var_data_per_wl_1d[px]) #(opt_weight**2 / var_data_per_wl_1d[px])
-                #     out_weight[tp] += fraction * opt_weight
-                #
-                # else:
-                #     out_flux[tp] += fraction * img_data_per_wl_1d[px]
-                #     out_var[tp] += fraction * var_data_per_wl_1d[px]
-
-
-
-        x = numpy.empty((out_flux.shape[0],5))
-        x[:,0] = numpy.arange(out_flux.shape[0], dtype=numpy.float)*dwl+wl0
-        x[:,1] = out_flux[:]
-        x[:,2] = out_weight[:]
-        x[:,3] = out_var[:]
-        x[:,4] = out_weight2[:]
-        numpy.savetxt("shit", x)
 
         #
-        # done with this 1-d extracted spectrum
+        # Now in a final step, apply optimal weighting
         #
-        numpy.savetxt("opt_weight", out_weight)
-        if (optimal_weight is None):
-            out_weight = numpy.ones_like(out_flux)
+        if (optimal_weight is not None):
+            opt_weights_drizzled = optimal_weight.get_weight(
+                    wl=_x, y=_y)
+        else:
+            opt_weights_drizzled = numpy.ones_like(drizzled_flux)
 
-        spectra_1d[:, cur_yrange] = (out_flux / out_weight)[:]
-        variance_1d[:, cur_yrange] = (out_var / out_weight)[:]
+        numpy.savetxt("drizzled_spec.2d.%d-%d" % (y1,y2),
+                      numpy.array([_x.ravel(),
+                                   _y.ravel(),
+                                   drizzled_flux.ravel(),
+                                   drizzled_var.ravel(),
+                                   opt_weights_drizzled.ravel(),
+                                   drizzled_npix.ravel(),
+                                   ]).T
+                      )
+
+        spec_1d_sum = numpy.nansum(drizzled_flux, axis=1)
+        numpy.savetxt("drizzled_spec.simple.%d-%d" % (y1,y2), spec_1d_sum)
+
+        _spec_1d_weighted = \
+            numpy.nansum((drizzled_flux * opt_weights_drizzled),
+                         axis=1)
+        _weight_times_npix = (opt_weights_drizzled * drizzled_npix)
+        _spec_1d_weights = numpy.nansum(_weight_times_npix, axis=1) / \
+                           numpy.nansum(drizzled_npix, axis=1)
+        # spec_1d_optimal = numpy.nansum(
+        #     (drizzled_flux * opt_weights_drizzled), axis=1) / numpy.sum(
+        #     opt_weights_drizzled, axis=1)
+        spec_1d_optimal = _spec_1d_weighted / _spec_1d_weights
+        print spec_1d_optimal.shape
+        numpy.savetxt("drizzled_spec.1d.%d-%d" % (y1,y2), spec_1d_optimal)
+
+
+
+        #
+        # compute the scaling factor from plain integration to optimally
+        # weighted average extraction.
+        #
+        flux_scaling = numpy.nanmedian(spec_1d_sum / spec_1d_optimal)
+        logger.info("Scaling factor from optimally weighted average to "
+                    "simple sum: %f" % (flux_scaling))
+
+        print type(flux_scaling)
+        spec_1d_final = spec_1d_optimal * flux_scaling
+        numpy.savetxt("drizzled_spec.final.%d-%d" % (y1,y2), spec_1d_final)
+
+        #
+        # Repeat the same arithmetic for the variance data
+        #
+        # TODO: CHECK THAT THE SCALING OF THE VARIANCE DATA IS VALID !!!
+        #
+        var_1d_optimal = numpy.nansum(
+            (drizzled_var * opt_weights_drizzled), axis=1) / numpy.sum(
+            opt_weights_drizzled, axis=1)
+        var_1d_sum = numpy.nansum(drizzled_var, axis=1)
+        var_scaling = numpy.nanmedian(var_1d_sum / var_1d_optimal)
+        var_1d_final = var_1d_optimal * var_scaling
+
+        # x = numpy.empty((out_flux.shape[0],5))
+        # x[:,0] = numpy.arange(out_flux.shape[0], dtype=numpy.float)*dwl+wl0
+        # x[:,1] = out_flux[:]
+        # x[:,2] = out_weight[:]
+        # x[:,3] = out_var[:]
+        # x[:,4] = out_weight2[:]
+        # numpy.savetxt("shit", x)
+        #
+        # #
+        # # done with this 1-d extracted spectrum
+        # #
+        # numpy.savetxt("opt_weight", out_weight)
+        # if (optimal_weight is None):
+        #     out_weight = numpy.ones_like(out_flux)
+
+        spectra_1d[:, cur_yrange, 0] = spec_1d_final[:]
+        spectra_1d[:, cur_yrange, 1] = spec_1d_optimal[:]
+        spectra_1d[:, cur_yrange, 2] = spec_1d_sum[:]
+
+        variance_1d[:, cur_yrange, 0] = var_1d_optimal[:]
+        variance_1d[:, cur_yrange, 1] = var_1d_sum[:]
+        variance_1d[:, cur_yrange, 2] = var_1d_final[:]
         logger.debug("Done with 1-d extraction")
 
     #
@@ -637,12 +685,29 @@ def optimal_extract(img_data, wl_data, variance_data,
         hdulist.writeto(out_fn, clobber=True)
     else:
         logger.info("Writing output as ASCII to %s / %s.var" % (out_fn, out_fn))
-        numpy.savetxt(out_fn,
-                      numpy.append(out_wl.reshape((-1, 1)),
-                                   spectra_1d, axis=1))
-        numpy.savetxt(out_fn + ".var",
-                      numpy.append(out_wl.reshape((-1, 1)),
-                                   variance_1d, axis=1))
+
+        with open(out_fn, "w") as of:
+            for aper, yr in enumerate(y_ranges):
+                print >>of, "# APERTURE: ", yr
+                numpy.savetxt(of, numpy.append(out_wl.reshape((-1, 1)),
+                                               spectra_1d[:,aper,:],
+                                               axis=1
+                                               )
+                              )
+                print >>of, "\n"*5
+
+        with open(out_fn+".var", "w") as of:
+            for aper, yr in enumerate(y_ranges):
+                print >>of, "# APERTURE: ", yr
+                numpy.savetxt(of, numpy.append(out_wl.reshape((-1, 1)),
+                                               variance_1d[:,aper,:],
+                                               axis=1
+                                               )
+                              )
+                print >>of, "\n"*5
+        # numpy.savetxt(out_fn + ".var",
+        #               numpy.append(out_wl.reshape((-1, 1)),
+        #                            variance_1d, axis=1))
 
     logger.debug("All done!")
     # numpy.savetxt(out_fn+".perwl",
