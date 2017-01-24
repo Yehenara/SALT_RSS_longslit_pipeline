@@ -5,6 +5,7 @@ import os
 import sys
 import astropy.io.fits as fits
 import numpy
+import logging
 
 import find_sources
 import tracespec
@@ -17,8 +18,11 @@ import pickle
 if __name__ == "__main__":
 
     log_setup = pysalt.mp_logging.setup_logging()
+    logger = logging.getLogger("Trace_&_Extract")
 
     fn = sys.argv[1]
+
+    out_fn = sys.argv[2]
 
     hdulist = fits.open(fn)
 
@@ -98,7 +102,7 @@ physical"""
 
     y_ranges = [[-25,25]]
     try:
-        user_ap = sys.argv[2]
+        user_ap = sys.argv[3]
     except:
         user_ap = None
     if (user_ap is not None):
@@ -113,7 +117,7 @@ physical"""
     print("Extracting sources for these apertures: %s" % (str(y_ranges)))
 
     d_width = brightest[2:4] - brightest[0]
-    optimal_extraction.optimal_extract(
+    results = optimal_extraction.optimal_extract(
         img_data=hdulist['SKYSUB.OPT'].data,
         wl_data=hdulist['WAVELENGTH'].data,
         variance_data=hdulist['VAR'].data,
@@ -128,6 +132,100 @@ physical"""
         y_ranges=y_ranges,
         dwl=0.5,
     )
+
+    #
+    # extract individual data from return data
+    #
+    spectra_1d = results['spectra']
+    variance_1d = results['variance']
+    wl0 = results['wl0']
+    dwl = results['dwl']
+    out_wl = results['wl_base']
+
+    #
+    # Finally, merge wavelength data and flux and write output to file
+    #
+    output_format = ["ascii", "fits"]
+    #out_fn = "opt_extract"
+    if ("fits" in output_format or True):
+        out_fn_fits = out_fn + ".fits"
+        logger.info("Writing FITS output to %s" % (out_fn))
+
+        extlist = [fits.PrimaryHDU()]
+
+        for i, part in enumerate(['BEST', 'WEIGHTED', 'SUM']):
+            extlist.append(
+                fits.ImageHDU(data=spectra_1d[:,:,i].T,
+                              name="SCI.%s" % (part),)
+            )
+            extlist.append(
+                fits.ImageHDU(data=variance_1d[:, :, i].T,
+                              name="VAR.%s" % (part), )
+            )
+
+        # create the output multi-extension FITS
+        # spec_3d = numpy.empty((2, spectra_1d.shape[1], spectra_1d.shape[0]))
+        # spec_3d[0, :, :] = spectra_1d.T[:, :]
+        # spec_3d[1, :, :] = variance_1d.T[:, :]
+
+        # numpy.append(spectra_1d.reshape((spectra_1d.shape[1], spectra_1d.shape[0], 1)),
+        #                    variance_1d.reshape((spectra_1d.shape[1], spectra_1d.shape[0], 1)),
+        #                     axis=2,
+        #                    )
+        # print spec_3d.shape
+        hdulist = fits.HDUList(extlist)
+        # [
+        #     fits.PrimaryHDU(header=hdu[0].header),
+        #     fits.ImageHDU(data=spectra_1d.T, name="SCI"),
+        #     fits.ImageHDU(data=variance_1d.T, name="VAR"),
+        #     fits.ImageHDU(data=spec_3d, name="SPEC3D")
+        # ])
+        # add headers for the wavelength solution
+        for ext in hdulist[1:]: #['SCI', 'VAR']:
+            ext.header['WCSNAME'] = "calibrated wavelength"
+            ext.header['CRPIX1'] = 1.
+            ext.header['CRVAL1'] = wl0
+            ext.header['CD1_1'] = dwl
+            ext.header['CTYPE1'] = "AWAV"
+            ext.header['CUNIT1'] = "Angstrom"
+            for i, yr in enumerate(y_ranges):
+                keyname = "YR_%03d" % (i + 1)
+                value = "%04d:%04d" % (yr[0], yr[1])
+                ext.header[keyname] = (value, "y-range for aperture %d" % (i + 1))
+        hdulist.writeto(out_fn_fits, clobber=True)
+        logger.info("done writing results (%s)" % (out_fn_fits))
+
+    if ("ascii" in output_format):
+        out_fn_ascii = out_fn + '.dat'
+        out_fn_asciivar = out_fn + '.var'
+        logger.info("Writing output as ASCII to %s / %s" % (out_fn_ascii,
+                                                            out_fn_asciivar))
+
+        with open(out_fn_ascii, "w") as of:
+            for aper, yr in enumerate(y_ranges):
+                print >>of, "# APERTURE: ", yr
+                numpy.savetxt(of, numpy.append(out_wl.reshape((-1, 1)),
+                                               spectra_1d[:,aper,:],
+                                               axis=1
+                                               )
+                              )
+                print >>of, "\n"*5
+
+        with open(out_fn_asciivar, "w") as of:
+            for aper, yr in enumerate(y_ranges):
+                print >>of, "# APERTURE: ", yr
+                numpy.savetxt(of, numpy.append(out_wl.reshape((-1, 1)),
+                                               variance_1d[:,aper,:],
+                                               axis=1
+                                               )
+                              )
+                print >>of, "\n"*5
+        # numpy.savetxt(out_fn + ".var",
+        #               numpy.append(out_wl.reshape((-1, 1)),
+        #                            variance_1d, axis=1))
+        logger.info("done writing ASCII results")
+
+
 
     print brightest[0]
     pysalt.mp_logging.shutdown_logging(log_setup)

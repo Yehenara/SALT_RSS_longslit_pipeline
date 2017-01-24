@@ -647,100 +647,16 @@ def optimal_extract(img_data, wl_data, variance_data,
         variance_1d[:, cur_yrange, 2] = var_1d_final[:]
         logger.debug("Done with 1-d extraction")
 
-    # return spectra_1d, variance_1d
-
-    #
-    # Finally, merge wavelength data and flux and write output to file
-    #
-    output_format = ["ascii", "fits"]
-    out_fn = "opt_extract"
-    if ("fits" in output_format or True):
-        out_fn_fits = out_fn + ".fits"
-        logger.info("Writing FITS output to %s" % (out_fn))
-
-        extlist = [fits.PrimaryHDU()]
-
-        for i, part in enumerate(['BEST', 'WEIGHTED', 'SUM']):
-            extlist.append(
-                fits.ImageHDU(data=spectra_1d[:,:,i].T,
-                              name="SCI.%s" % (part),)
-            )
-            extlist.append(
-                fits.ImageHDU(data=variance_1d[:, :, i].T,
-                              name="VAR.%s" % (part), )
-            )
-
-        # create the output multi-extension FITS
-        # spec_3d = numpy.empty((2, spectra_1d.shape[1], spectra_1d.shape[0]))
-        # spec_3d[0, :, :] = spectra_1d.T[:, :]
-        # spec_3d[1, :, :] = variance_1d.T[:, :]
-
-        # numpy.append(spectra_1d.reshape((spectra_1d.shape[1], spectra_1d.shape[0], 1)),
-        #                    variance_1d.reshape((spectra_1d.shape[1], spectra_1d.shape[0], 1)),
-        #                     axis=2,
-        #                    )
-        # print spec_3d.shape
-        hdulist = fits.HDUList(extlist)
-        # [
-        #     fits.PrimaryHDU(header=hdu[0].header),
-        #     fits.ImageHDU(data=spectra_1d.T, name="SCI"),
-        #     fits.ImageHDU(data=variance_1d.T, name="VAR"),
-        #     fits.ImageHDU(data=spec_3d, name="SPEC3D")
-        # ])
-        # add headers for the wavelength solution
-        for ext in hdulist[1:]: #['SCI', 'VAR']:
-            ext.header['WCSNAME'] = "calibrated wavelength"
-            ext.header['CRPIX1'] = 1.
-            ext.header['CRVAL1'] = wl0
-            ext.header['CD1_1'] = dwl
-            ext.header['CTYPE1'] = "AWAV"
-            ext.header['CUNIT1'] = "Angstrom"
-            for i, yr in enumerate(y_ranges):
-                keyname = "YR_%03d" % (i + 1)
-                value = "%04d:%04d" % (yr[0], yr[1])
-                ext.header[keyname] = (value, "y-range for aperture %d" % (i + 1))
-        hdulist.writeto(out_fn_fits, clobber=True)
-        logger.info("done writing results (%s)" % (out_fn_fits))
-
-    if ("ascii" in output_format):
-        out_fn_ascii = out_fn + '.dat'
-        out_fn_asciivar = out_fn + '.var'
-        logger.info("Writing output as ASCII to %s / %s" % (out_fn_ascii,
-                                                            out_fn_asciivar))
-
-        with open(out_fn_ascii, "w") as of:
-            for aper, yr in enumerate(y_ranges):
-                print >>of, "# APERTURE: ", yr
-                numpy.savetxt(of, numpy.append(out_wl.reshape((-1, 1)),
-                                               spectra_1d[:,aper,:],
-                                               axis=1
-                                               )
-                              )
-                print >>of, "\n"*5
-
-        with open(out_fn_asciivar, "w") as of:
-            for aper, yr in enumerate(y_ranges):
-                print >>of, "# APERTURE: ", yr
-                numpy.savetxt(of, numpy.append(out_wl.reshape((-1, 1)),
-                                               variance_1d[:,aper,:],
-                                               axis=1
-                                               )
-                              )
-                print >>of, "\n"*5
-        # numpy.savetxt(out_fn + ".var",
-        #               numpy.append(out_wl.reshape((-1, 1)),
-        #                            variance_1d, axis=1))
-        logger.info("done writing ASCII results")
-
     logger.debug("All done!")
-    # numpy.savetxt(out_fn+".perwl",
-    #               numpy.append(wl_data_1d.reshape((-1,1)),
-    #                            img_data_per_wl_1d.reshape((-1,1)), axis=1))
-    # numpy.savetxt(out_fn + ".raw",
-    #           numpy.append(wl_data_1d.reshape((-1, 1)),
-    #                        img_data.reshape((-1, 1)), axis=1))
 
-    return spectra_1d, variance_1d
+    return dict(
+        spectra=spectra_1d,
+        variance = variance_1d,
+        y_ranges = y_ranges,
+        wl0 = wl0,
+        dwl = dwl,
+        wl_base = out_wl,
+    )
 
 def dummy():
     wl_width_1d = wl_width.ravel()
