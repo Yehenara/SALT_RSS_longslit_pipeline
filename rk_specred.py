@@ -1538,7 +1538,10 @@ physical"""
             print "finding trace slopes"
             slopes, trace_offset = tracespec.compute_trace_slopes(
                 spectrace_data)
+            hdu_appends.append(tracespec.save_trace_offsets(trace_offset))
 
+            print slopes
+            #hdu[0].header['TRACE0_0']
             pass
 
 

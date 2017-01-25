@@ -158,6 +158,11 @@ def compute_trace_slopes(tracedata, n_iter=3, polyorder=1):
     numpy.savetxt("tracespec.offset", trace_offset)
     return poly_fits, trace_offset
 
+def save_trace_offsets(trace_offset):
+    tbhdu = pyfits.ImageHDU(data=trace_offset, name="TRACEOFFSET")
+    return tbhdu
+
+
 
 if __name__ == "__main__":
 
