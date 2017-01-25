@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import pyfits
+from astropy.io import fits
 import os, sys
 import numpy
 import scipy
@@ -133,8 +133,8 @@ def create_wlmap_from_skylines(hdulist):
 
     logger.info("Isolating sky lines and continuum")
     skylines, continuum = prep_science.filter_isolate_skylines(data=imgdata)
-    pyfits.PrimaryHDU(data=skylines).writeto("skytrace_sky.fits", clobber=True)
-    pyfits.PrimaryHDU(data=continuum).writeto("skytrace_continuum.fits", clobber=True)
+    fits.PrimaryHDU(data=skylines).writeto("skytrace_sky.fits", clobber=True)
+    fits.PrimaryHDU(data=continuum).writeto("skytrace_continuum.fits", clobber=True)
 
     # pick a region close to the center, extract block of image rows, and get 
     # line list
@@ -178,7 +178,7 @@ def create_wlmap_from_skylines(hdulist):
     all_traces = numpy.array(all_traces)
     print all_traces.shape
 
-    pyfits.PrimaryHDU(data=all_traces).writeto("alltraces.fits", clobber=True)
+    fits.PrimaryHDU(data=all_traces).writeto("alltraces.fits", clobber=True)
 
     ##########################################################################
     #
@@ -426,7 +426,7 @@ def create_wlmap_from_skylines(hdulist):
     x_eff = x
     for iteration in range(3):
         x_eff = x - ((p_scale[0]*x_eff+p_scale[1])*mc_spline(y) + (p_skew[0]*x_eff+p_skew[1])*(y-imgdata.shape[0]/2))
-        pyfits.PrimaryHDU(data=x_eff).writeto("x_eff_%d.fits" % (iteration+1), clobber=True)
+        fits.PrimaryHDU(data=x_eff).writeto("x_eff_%d.fits" % (iteration+1), clobber=True)
 
 
     #
@@ -441,7 +441,7 @@ def create_wlmap_from_skylines(hdulist):
     for order in range(hdulist[0].header['WLSFIT_N']):
         a = hdulist[0].header['WLSFIT_%d' % (order)]
         wl_map += a * numpy.power(x_eff,order)
-    pyfits.PrimaryHDU(data=wl_map).writeto("wl_map.fits", clobber=True)
+    fits.PrimaryHDU(data=wl_map).writeto("wl_map.fits", clobber=True)
 
 
     return x_eff, wl_map, medians, p_scale, p_skew, fm
@@ -453,7 +453,7 @@ if __name__ == "__main__":
     _logger = pysalt.mp_logging.setup_logging()
 
     fn = sys.argv[1]
-    hdulist = pyfits.open(fn)
+    hdulist = fits.open(fn)
 
     (x_eff, wl_map, medians, p_scale, p_skew, fm) = create_wlmap_from_skylines(hdulist)
 

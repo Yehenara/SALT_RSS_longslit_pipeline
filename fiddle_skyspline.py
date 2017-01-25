@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
 
-import os, sys, numpy, scipy, scipy.interpolate, pyfits
+import os, sys, numpy, scipy, scipy.interpolate
 import spline_pickle_test
+from astropy.io import fits
 
 if __name__ == "__main__":
 
@@ -18,9 +19,9 @@ if __name__ == "__main__":
     wl_from_fn = fn+"__IntegSky_from.fits"
     wl_to_fn = fn+"__IntegSky_to.fits"
 
-    obj_hdu = pyfits.open(wl_center)
-    wl_from = pyfits.open(wl_from_fn)[0].data
-    wl_to = pyfits.open(wl_to_fn)[0].data
+    obj_hdu = fits.open(wl_center)
+    wl_from = fits.open(wl_from_fn)[0].data
+    wl_to = fits.open(wl_to_fn)[0].data
     wl_center = obj_hdu['WAVELENGTH'].data
     wl_width = wl_to - wl_from
 
@@ -52,6 +53,6 @@ if __name__ == "__main__":
     skysub = img - sky2d
 
     out_fn = fn+"__fiddle_skysub.fits"
-    pyfits.PrimaryHDU(header=obj_hdu['SCI'].header,
+    fits.PrimaryHDU(header=obj_hdu['SCI'].header,
                         data=skysub).writeto(out_fn, clobber=True)
     print "skysub written to",out_fn

@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 
-import sys, numpy, scipy, pyfits
+import sys, numpy, scipy
+from astropy.io import fits
 import scipy.ndimage
 import logging
 
@@ -13,8 +14,8 @@ def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5, bad_
 
     #print wl.shape, img.shape
 
-    #pyfits.PrimaryHDU(data=x).writeto("fiddle_x.fits", clobber=True)
-    #pyfits.PrimaryHDU(data=y).writeto("fiddle_y.fits", clobber=True)
+    #fits.PrimaryHDU(data=x).writeto("fiddle_x.fits", clobber=True)
+    #fits.PrimaryHDU(data=y).writeto("fiddle_y.fits", clobber=True)
 
     logger = logging.getLogger("ComputeProfile")
 
@@ -142,7 +143,7 @@ if __name__ == "__main__":
 
     fn = sys.argv[1]
 
-    hdu = pyfits.open(fn)
+    hdu = fits.open(fn)
 
     wl = hdu['WAVELENGTH'].data
     img = hdu['SCI'].data

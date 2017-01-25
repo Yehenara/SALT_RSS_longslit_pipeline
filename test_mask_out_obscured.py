@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import pyfits
+from astropy.io import fits
 import os
 import sys
 import numpy
@@ -31,8 +31,8 @@ def find_obscured_regions(img, threshold=0.35):
     print img.shape, i0.shape, bg.shape
 
     img = img - bg
-    pyfits.PrimaryHDU(data=bg).writeto("bg.fits", clobber=True)
-    pyfits.PrimaryHDU(data=img).writeto("bgsub.fits", clobber=True)
+    fits.PrimaryHDU(data=bg).writeto("bg.fits", clobber=True)
+    fits.PrimaryHDU(data=img).writeto("bgsub.fits", clobber=True)
 
     numpy.savetxt("profile.sum", numpy.sum(img, axis=1))
 
@@ -56,7 +56,7 @@ def find_obscured_regions(img, threshold=0.35):
     #     very_bad = bad #& bad_y
     #
     #     img[very_bad] = numpy.NaN #profile_2d[very_bad]
-    #     pyfits.PrimaryHDU(data=img).writeto("clean_%d.fits" % (iter+1), clobber=True)
+    #     fits.PrimaryHDU(data=img).writeto("clean_%d.fits" % (iter+1), clobber=True)
 
     profile = numpy.nanmean(img, axis=1)
     profile_noise = numpy.nanstd(img, axis=1)
@@ -118,7 +118,7 @@ def find_obscured_regions(img, threshold=0.35):
     numpy.savetxt("profile.cleaned", profile2)
 
     img[bad_columns, :] = numpy.NaN
-    pyfits.PrimaryHDU(data=img).writeto("bgsub+clean.fits", clobber=True)
+    fits.PrimaryHDU(data=img).writeto("bgsub+clean.fits", clobber=True)
 
     return bad_columns
 
@@ -127,7 +127,7 @@ def find_obscured_regions(img, threshold=0.35):
 if __name__ == "__main__":
 
     fn = sys.argv[1]
-    hdulist = pyfits.open(fn)
+    hdulist = fits.open(fn)
     img = hdulist['SCI'].data.copy()
 
     bad_columns = find_obscured_regions(img=img)

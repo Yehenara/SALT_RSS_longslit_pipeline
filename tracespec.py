@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import os, sys, numpy, scipy, pyfits
+import os, sys, numpy, scipy
+from astropy.io import fits
 import logging
 
 import pysalt
@@ -159,7 +160,7 @@ def compute_trace_slopes(tracedata, n_iter=3, polyorder=1):
     return poly_fits, trace_offset
 
 def save_trace_offsets(trace_offset):
-    tbhdu = pyfits.ImageHDU(data=trace_offset, name="TRACEOFFSET")
+    tbhdu = fits.ImageHDU(data=trace_offset, name="TRACEOFFSET")
     return tbhdu
 
 
@@ -169,7 +170,7 @@ if __name__ == "__main__":
     logger_setup = pysalt.mp_logging.setup_logging()
     logger = logging.getLogger("MAIN")
 
-    hdulist = pyfits.open(sys.argv[1])
+    hdulist = fits.open(sys.argv[1])
     
     start_x = int(sys.argv[2])-1
     start_y = int(sys.argv[3])-1
@@ -180,7 +181,7 @@ if __name__ == "__main__":
 
     start = start_x,start_y
     data = hdulist['SKYSUB.OPT'].data
-    pyfits.PrimaryHDU(data=data).writeto("tracespec.fits", clobber=True)
+    fits.PrimaryHDU(data=data).writeto("tracespec.fits", clobber=True)
 
     print "computing spectrum trace"
     spectrace_data = compute_spectrum_trace(data=data, start_x=start_x, start_y=start_y, xbin=xbin)

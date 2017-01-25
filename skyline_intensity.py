@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import os, sys, pyfits, numpy
+import os, sys, numpy
+from astropy.io import fits
 import bottleneck
 import logging
 
@@ -263,7 +264,7 @@ if __name__ == "__main__":
     skyline_list = numpy.loadtxt("skyline_list")
 
     fitsfile = sys.argv[1]
-    hdulist = pyfits.open(fitsfile)
+    hdulist = fits.open(fitsfile)
 
     
     i, i_med, i_avg = find_skyline_profiles(hdulist, skyline_list)

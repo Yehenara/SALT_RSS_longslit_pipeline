@@ -2,7 +2,7 @@
 
 import os
 import sys
-import pyfits
+from astropy.io import fits
 import numpy
 import scipy
 
@@ -142,7 +142,7 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
         #print "ITER", iteration, fcam.shape
 
         if (debug):
-            pyfits.PrimaryHDU(data=_lambda).writeto("lambda_%d.fits" % (iteration+1), clobber=True)
+            fits.PrimaryHDU(data=_lambda).writeto("lambda_%d.fits" % (iteration+1), clobber=True)
 
         
     return _lambda
@@ -187,7 +187,7 @@ if __name__ == "__main__":
     (options, cmdline_args) = parser.parse_args()
 
     fn = cmdline_args[0]
-    hdulist = pyfits.open(fn)
+    hdulist = fits.open(fn)
 
 
     binning = pysalt.get_binning(hdulist)
@@ -202,7 +202,7 @@ if __name__ == "__main__":
         y_center=options.ycenter,
     )
     print wlmap.shape
-    pyfits.PrimaryHDU(data=wlmap).writeto(cmdline_args[1], clobber=True)
+    fits.PrimaryHDU(data=wlmap).writeto(cmdline_args[1], clobber=True)
 
     pysalt.mp_logging.shutdown_logging(logger)
 

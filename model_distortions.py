@@ -4,7 +4,7 @@
 import os
 import sys
 import numpy
-import pyfits
+from astropy.io import fits
 from pysalt import mp_logging
 import logging
 import scipy
@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
 
     fn = sys.argv[1]
-    hdulist = pyfits.open(fn)
+    hdulist = fits.open(fn)
 
     img_size = hdulist['SCI'].header['NAXIS1']
 
@@ -201,7 +201,7 @@ if __name__ == "__main__":
         badrows=badrows
     )
 
-    pyfits.PrimaryHDU(data=distortion_2d).writeto("distortion_2d.fits", clobber=True)
+    fits.PrimaryHDU(data=distortion_2d).writeto("distortion_2d.fits", clobber=True)
     numpy.savetxt("distortion_model.quality", dist_quality)
 
     mp_logging.shutdown_logging(logger_setup)

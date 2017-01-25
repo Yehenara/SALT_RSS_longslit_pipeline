@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 
-import sys, numpy, scipy, pyfits
+import sys, numpy, scipy
+from astropy.io import fits
 import scipy.ndimage
 from fiddle_slitflat import compute_profile
 import pickle
@@ -100,17 +101,17 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
         with open("profiles_sparse", "wb") as pf:
             pickle.dump((profiles, profiles_sparse), pf)
 
-    pyfits.PrimaryHDU(data=profiles).writeto("fiddle_slitflat.fits", clobber=True)
+    fits.PrimaryHDU(data=profiles).writeto("fiddle_slitflat.fits", clobber=True)
 
     # normalize all profiles
     ref_row = wl.shape[0] / 2
     profiles = profiles / profiles[ref_row,:]
-    pyfits.PrimaryHDU(data=profiles).writeto("fiddle_slitflatnorm.fits", clobber=True)
+    fits.PrimaryHDU(data=profiles).writeto("fiddle_slitflatnorm.fits", clobber=True)
 
     # also normalize the sparse profile grid
     ref_row_sparse = sparse_y.shape[0] / 2
     profiles_sparse = profiles_sparse / profiles_sparse[ref_row_sparse, :]
-    pyfits.PrimaryHDU(data=profiles_sparse).writeto("fiddle_slitflatnorm_sparse.fits", clobber=True)
+    fits.PrimaryHDU(data=profiles_sparse).writeto("fiddle_slitflatnorm_sparse.fits", clobber=True)
 
 
     #
@@ -128,8 +129,8 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
     # dont_use = (profiles_sparse < 0.3) | (profiles_sparse > 1.5)
     # good_data &= ~dont_use
 
-    fit_steps = [pyfits.PrimaryHDU()]
-    fit_residuals = [pyfits.PrimaryHDU()]
+    fit_steps = [fits.PrimaryHDU()]
+    fit_residuals = [fits.PrimaryHDU()]
     order = [1, 5]
     for final_iteration in range(10):
         logger.debug("iteration %d - %d good data points of %d" % (final_iteration+1,  numpy.sum(good_data), profiles_sparse.size))
@@ -152,7 +153,7 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
         fit2d = interpol(x=wl_x2d, y=y_y2d, grid=False)
 
         # print fit2d.shape
-        fit_steps.append(pyfits.ImageHDU(data=fit2d))
+        fit_steps.append(fits.ImageHDU(data=fit2d))
 
         residuals = profiles_sparse - fit2d
         _perc = numpy.nanpercentile(residuals[good_data], [16,84,50])
@@ -162,16 +163,16 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
         outlier = (residuals > _nsigma*_sigma) | (residuals < -_nsigma*_sigma)
         good_data[outlier] = False
 
-        fit_residuals.append(pyfits.ImageHDU(data=residuals.copy()))
+        fit_residuals.append(fits.ImageHDU(data=residuals.copy()))
 
         logger.debug("Iteration %d: median/sigma = %f / %f" % (final_iteration+1, _median, _sigma))
         residuals[~good_data] = numpy.NaN
-        #fit_residuals.append(pyfits.ImageHDU(data=residuals))
+        #fit_residuals.append(fits.ImageHDU(data=residuals))
 
-    pyfits.HDUList(fit_steps).writeto("fiddle_slitflatnorm_sparsefit.fits", clobber=True)
-    pyfits.HDUList(fit_residuals).writeto("fiddle_slitflatnorm_sparseresiduals.fits", clobber=True)
-    # pyfits.PrimaryHDU(data=wl_x2d).writeto("fiddle_slitflatnorm_x2d.fits", clobber=True)
-    # pyfits.PrimaryHDU(data=y_y2d).writeto("fiddle_slitflatnorm_y2d.fits", clobber=True)
+    fits.HDUList(fit_steps).writeto("fiddle_slitflatnorm_sparsefit.fits", clobber=True)
+    fits.HDUList(fit_residuals).writeto("fiddle_slitflatnorm_sparseresiduals.fits", clobber=True)
+    # fits.PrimaryHDU(data=wl_x2d).writeto("fiddle_slitflatnorm_x2d.fits", clobber=True)
+    # fits.PrimaryHDU(data=y_y2d).writeto("fiddle_slitflatnorm_y2d.fits", clobber=True)
 
     #
     # Now compute the full resolution 2-d frame from the best-fit polynomial
@@ -180,9 +181,9 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
     full_y, _ = numpy.indices(img.shape)
     # fullres2d = polyval2dx(x=wl, y=full_y, m=poly2d, order=order)
     fullres2d = interpol(x=wl, y=full_y, grid=False)
-    pyfits.PrimaryHDU(data=fullres2d).writeto("fiddle_slitflatnorm_fullres2d.fits", clobber=True)
+    fits.PrimaryHDU(data=fullres2d).writeto("fiddle_slitflatnorm_fullres2d.fits", clobber=True)
 
-    pyfits.PrimaryHDU(data=(img/fullres2d)).writeto("fiddle_slitflatnorm_fullresimg2d.fits", clobber=True)
+    fits.PrimaryHDU(data=(img/fullres2d)).writeto("fiddle_slitflatnorm_fullresimg2d.fits", clobber=True)
 
     return fullres2d, interpol
 
@@ -190,7 +191,7 @@ if __name__ == "__main__":
 
     fn = sys.argv[1]
 
-    hdu = pyfits.open(fn)
+    hdu = fits.open(fn)
 
     wl = hdu['WAVELENGTH'].data
     img = hdu['SCI.RAW'].data

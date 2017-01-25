@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os, sys, numpy, scipy
-import astropy.io.fits as pyfits
+from astropy.io import fits
 
 import scipy.ndimage
 import scipy.stats
@@ -149,7 +149,7 @@ def continuum_slit_profile(hdulist=None, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.
 
     var[out_of_range] = numpy.NaN
 
-    pyfits.PrimaryHDU(data=data).writeto("xxx", clobber=True)
+    fits.PrimaryHDU(data=data).writeto("xxx", clobber=True)
 
     #intensity_profile = bottleneck.nansum(data, axis=1)
     intensity_profile = numpy.nansum(data, axis=1)
@@ -296,7 +296,7 @@ def identify_sources(profile, profile_var=None):
 
 def create_source_tbhdu(sources):
 
-    return pyfits.BinTableHDU()
+    return fits.BinTableHDU()
 
 
 def save_continuum_slit_profile(prof, prof_var):
@@ -306,7 +306,7 @@ def save_continuum_slit_profile(prof, prof_var):
     #
     combined = numpy.array([prof, prof_var])
 
-    imghdu = pyfits.ImageHDU(data=combined, name='SRC_PROFILE')
+    imghdu = fits.ImageHDU(data=combined, name='SRC_PROFILE')
 
     return imghdu
 
@@ -316,7 +316,7 @@ if __name__ == "__main__":
     logger_setup = pysalt.mp_logging.setup_logging()
     logger = logging.getLogger("MAIN")
 
-    hdulist = pyfits.open(sys.argv[1])
+    hdulist = fits.open(sys.argv[1])
 
     profile = continuum_slit_profile(hdulist)
     sources = identify_sources(profile)

@@ -3,7 +3,7 @@
 
 import os
 import sys
-import pyfits
+from astropy.io import fits
 import numpy
 
 
@@ -13,7 +13,7 @@ if __name__ == "__main__":
     wl = float(sys.argv[2])
     width = int(sys.argv[3])
 
-    hdulist = pyfits.open(infile)
+    hdulist = fits.open(infile)
 
     wlmap = hdulist['WAVELENGTH'].data
 
@@ -45,4 +45,4 @@ if __name__ == "__main__":
     #cutout = hdulist['SCI'].data[x_start-width:x_start+width]
     print cutout.shape
 
-    pyfits.PrimaryHDU(data=cutout).writeto("cutout.fits", clobber=True)
+    fits.PrimaryHDU(data=cutout).writeto("cutout.fits", clobber=True)

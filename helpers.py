@@ -3,7 +3,7 @@
 import os, sys, glob, shutil
 
 import numpy
-import pyfits
+from astropy.io import fits
 from scipy.ndimage.filters import median_filter
 import bottleneck
 import scipy.interpolate
@@ -14,7 +14,6 @@ import warnings
 warnings.simplefilter('ignore', numpy.RankWarning)
 
 
-import pyfits
 import pysalt.mp_logging
 import logging
 import numpy

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import os, sys, pyfits
+import os, sys
+from astropy.io import fits
 import numpy
 import scipy, scipy.ndimage, scipy.optimize
 import scipy.interpolate
@@ -194,7 +195,7 @@ def minimize_sky_residuals2(img, sky, wl, bpm, vert_size=5, smooth=3, debug_out=
     numpy.savetxt("optscale.data", data)
     numpy.savetxt("optscale.data2", data2)
 
-    pyfits.PrimaryHDU(data=scaling).writeto("optscale.data.fits", clobber=True)
+    fits.PrimaryHDU(data=scaling).writeto("optscale.data.fits", clobber=True)
 
     #
     # Do a low-order polynomial fit
@@ -213,7 +214,7 @@ def minimize_sky_residuals2(img, sky, wl, bpm, vert_size=5, smooth=3, debug_out=
             order=3)
 
         fit = polyval2d(x=data_wl, y=data_y, m=pf2)
-        #pyfits.PrimaryHDU(data=fit).writeto("optscale.xxx.fits", clobber=True)
+        #fits.PrimaryHDU(data=fit).writeto("optscale.xxx.fits", clobber=True)
 
         diff = (data_scaling - fit)
         _perc = numpy.percentile(diff[good], [16,50,84])
@@ -251,10 +252,10 @@ def minimize_sky_residuals2(img, sky, wl, bpm, vert_size=5, smooth=3, debug_out=
     #     for y,x in itertools.product(range(scaling.shape[0]), range(scaling.shape[1])):
     #         filtered[y,x,plane] = bottleneck.nanmedian(padded[y:y+2*smooth+1, x:x+2*smooth+1])
 
-    #     pyfits.HDUList([
-    #         pyfits.PrimaryHDU(),
-    #         pyfits.ImageHDU(data=scaling[:,:,plane].T,name="IN"),
-    #         pyfits.ImageHDU(data=filtered[:,:,plane].T,name="out"),
+    #     fits.HDUList([
+    #         fits.PrimaryHDU(),
+    #         fits.ImageHDU(data=scaling[:,:,plane].T,name="IN"),
+    #         fits.ImageHDU(data=filtered[:,:,plane].T,name="out"),
     #         ]).writeto("scaling_%d.fits" % (plane), clobber=True)
         
     
@@ -270,7 +271,7 @@ def minimize_sky_residuals2(img, sky, wl, bpm, vert_size=5, smooth=3, debug_out=
     
     # y,_ = numpy.indices(img.shape)
     # full2d = interpol(wl.ravel(), y.ravel(), grid=False).reshape(img.shape)
-    # pyfits.PrimaryHDU(data=full2d).writeto("scale2d.fits", clobber=True)
+    # fits.PrimaryHDU(data=full2d).writeto("scale2d.fits", clobber=True)
 
     # return data, filtered, full2d
 
@@ -365,10 +366,10 @@ if __name__ == "__main__":
 
     if (sys.argv[1] == "v1"):
         img_fn = sys.argv[2]
-        img_hdu = pyfits.open(img_fn)
+        img_hdu = fits.open(img_fn)
 
         sky_fn = sys.argv[3]
-        sky_hdu = pyfits.open(sky_fn)
+        sky_hdu = fits.open(sky_fn)
 
         img = img_hdu[0].data
 
@@ -376,14 +377,14 @@ if __name__ == "__main__":
 
         full_profile = minimize_sky_residuals(img, sky, vert_size=5, smooth=20, debug_out=True)
         skysub = img - (sky * full_profile)
-        pyfits.PrimaryHDU(data=img).writeto(sys.argv[3], clobber=True)
+        fits.PrimaryHDU(data=img).writeto(sys.argv[3], clobber=True)
 
     elif (sys.argv[1] == 'v2'):
         fn = sys.argv[2]
-        hdulist = pyfits.open(fn)
+        hdulist = fits.open(fn)
         
         cosmics = hdulist['COSMICS'].data
-        #pyfits.PrimaryHDU(data=cosmics).writeto("cosmics.fits", clobber=True)
+        #fits.PrimaryHDU(data=cosmics).writeto("cosmics.fits", clobber=True)
 
         xxx = minimize_sky_residuals2(
             img=hdulist['SCI.RAW'].data.astype(numpy.float)-cosmics, 
@@ -397,7 +398,7 @@ if __name__ == "__main__":
 
     elif (sys.argv[1] == 'v3'):
         
-        hdu = pyfits.open("optscale.data.fits")
+        hdu = fits.open("optscale.data.fits")
         data = hdu[0].data
         print data.shape
 
@@ -427,7 +428,7 @@ if __name__ == "__main__":
         #         block[outlier] = numpy.NaN
 
         # output = padded[smooth:-smooth, smooth:-smooth]
-        # pyfits.PrimaryHDU(data=output).writeto("optscale.xxx.fits", clobber=True)
+        # fits.PrimaryHDU(data=output).writeto("optscale.xxx.fits", clobber=True)
 
         for iteration in range(5):
             y,x = numpy.indices(scaling.shape, dtype=numpy.float)
@@ -438,7 +439,7 @@ if __name__ == "__main__":
                 z=scaling[good],
                 order=3)
             fit = polyval2d(x=x, y=y, m=pf2)
-            pyfits.PrimaryHDU(data=fit).writeto("optscale.xxx.fits", clobber=True)
+            fits.PrimaryHDU(data=fit).writeto("optscale.xxx.fits", clobber=True)
 
             diff = (scaling - fit)
             _perc = numpy.percentile(diff[good], [16,50,84])
@@ -534,7 +535,7 @@ if __name__ == "__main__":
         #         block[outlier] = numpy.NaN
 
         # output = padded[smooth:-smooth, smooth:-smooth]
-        # pyfits.PrimaryHDU(data=output).writeto("optscale.xxx.fits", clobber=True)
+        # fits.PrimaryHDU(data=output).writeto("optscale.xxx.fits", clobber=True)
 
         for iteration in range(5):
             y,x = numpy.indices(scaling.shape, dtype=numpy.float)
@@ -545,7 +546,7 @@ if __name__ == "__main__":
                 z=scaling[good],
                 order=3)
             fit = polyval2d(x=x, y=y, m=pf2)
-            pyfits.PrimaryHDU(data=fit).writeto("optscale.xxx.fits", clobber=True)
+            fits.PrimaryHDU(data=fit).writeto("optscale.xxx.fits", clobber=True)
 
             diff = (scaling - fit)
             _perc = numpy.percentile(diff[good], [16,50,84])

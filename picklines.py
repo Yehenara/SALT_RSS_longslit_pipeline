@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import pickle, numpy, pyfits, os, sys
+import pickle, numpy, os, sys
 import traceline
 
 arclist = pickle.load(open(sys.argv[1], "rb"))

@@ -4,7 +4,7 @@
 import os
 import sys
 import numpy
-import pyfits as fits
+from astropy.io import fits
 
 import logging
 import scipy

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import os, sys, pyfits
+import os, sys
+from astropy.io import fits
 import numpy
 from scipy.ndimage.filters import median_filter
 import bottleneck
@@ -27,7 +28,7 @@ import matplotlib.pyplot as pl
 
 def extract_spectra(filename, extname, specs):
 
-    hdulist = pyfits.open(filename)
+    hdulist = fits.open(filename)
 
     wl_data = hdulist['WAVELENGTH'].data
     obj_data = None

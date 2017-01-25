@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
-import os, sys, podi_cython, pyfits, numpy
+import os, sys, podi_cython, numpy
+from astropy.io import fits
 
 if __name__ == "__main__":
 
-    hdulist = pyfits.open(sys.argv[1])
+    hdulist = fits.open(sys.argv[1])
 
     data = hdulist['SKYSUB.OPT'].data
 
@@ -26,7 +27,7 @@ if __name__ == "__main__":
 
     cell_cleaned, cell_mask, cell_saturated = crj
 
-    hdulist.append(pyfits.ImageHDU(data=cell_cleaned,
+    hdulist.append(fits.ImageHDU(data=cell_cleaned,
                                    header=hdulist['SCI.RAW'].header,
                                    name="PODI.CRJ"))
 

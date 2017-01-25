@@ -38,7 +38,7 @@ numpy.seterr(divide='ignore', invalid='ignore')
 import warnings
 
 warnings.simplefilter('ignore', numpy.RankWarning)
-# warnings.simplefilter('ignore', pyfits.PyfitsDeprecationWarning)
+# warnings.simplefilter('ignore', fits.fitsDeprecationWarning)
 from astropy.utils.exceptions import *
 
 warnings.simplefilter('ignore', AstropyDeprecationWarning)
@@ -79,7 +79,7 @@ from pysalt.saltspec.speccal import speccal
 
 from PySpectrograph.Spectra import findobj
 
-# import pyfits
+# import fits
 import pysalt.mp_logging
 import logging
 import numpy
@@ -314,7 +314,7 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
     logger = logging.getLogger("PrepData(%s)" % (fb))
     logger.info("Working on file %s" % (infile))
 
-    # hdulist = pyfits.open(infile)
+    # hdulist = fits.open(infile)
     hdulist = fits.open(infile)
     # print hdulist, type(hdulist)
 
@@ -1037,7 +1037,7 @@ def specred(rawdir, prodir, options,
         #     return_slitprofile=True,
         #     trace_every=0.05)
         # print wls_2d
-        # wl_hdu = pyfits.ImageHDU(data=wls_2d)
+        # wl_hdu = fits.ImageHDU(data=wls_2d)
         # wl_hdu.name = "WAVELENGTH"
         # hdu.append(wl_hdu)
 
@@ -1182,11 +1182,11 @@ def specred(rawdir, prodir, options,
         #     )
 
         # logger.info("Performing sky subtraction")
-        # sky_hdu = pyfits.ImageHDU(data=sky2d, name='SKY')
+        # sky_hdu = fits.ImageHDU(data=sky2d, name='SKY')
         # hdu.append(sky_hdu)
 
         # if (not slitprofile == None):
-        #     sky_hdux = pyfits.ImageHDU(data=sky2d*slitprofile.reshape((-1,1)))
+        #     sky_hdux = fits.ImageHDU(data=sky2d*slitprofile.reshape((-1,1)))
         #     sky_hdux.name = "SKY_X"
         #     hdu.append(sky_hdux)
 
@@ -1313,9 +1313,9 @@ def specred(rawdir, prodir, options,
         skyscaling2d = 1.
         opt_sky_scaling = 1.
 
-        pyfits.PrimaryHDU(data=img_data).writeto("debug_minimizeskyresiduals_img.fits", clobber=True)
-        pyfits.PrimaryHDU(data=sky_2d).writeto("debug_minimizeskyresiduals_sky2d.fits", clobber=True)
-        pyfits.PrimaryHDU(data=wl_map).writeto("debug_minimizeskyresiduals_wlmap.fits", clobber=True)
+        fits.PrimaryHDU(data=img_data).writeto("debug_minimizeskyresiduals_img.fits", clobber=True)
+        fits.PrimaryHDU(data=sky_2d).writeto("debug_minimizeskyresiduals_sky2d.fits", clobber=True)
+        fits.PrimaryHDU(data=wl_map).writeto("debug_minimizeskyresiduals_wlmap.fits", clobber=True)
 
         if (options.skyscaling == 'none'):
 

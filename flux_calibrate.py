@@ -2,7 +2,7 @@
 
 
 import os, sys
-import pyfits
+from astropy.io import fits
 import numpy
 import scipy
 import scipy.interpolate
@@ -168,5 +168,5 @@ Column 8: Flux-calibrated output spectrum
     #
     # Save file as FITS file as well
     #
-    hdu_list = pyfits.HDUList([pyfits.PrimaryHDU(data=data_final)])
+    hdu_list = fits.HDUList([fits.PrimaryHDU(data=data_final)])
     hdu_list.writeto(outfile+".fits", clobber=True)

@@ -3,7 +3,7 @@
 
 
 
-import pyfits
+from astropy.io import fits
 import os
 import sys
 import numpy
@@ -142,7 +142,7 @@ if __name__ == "__main__":
 
     fn = sys.argv[1]
 
-    hdulist = pyfits.open(fn)
+    hdulist = fits.open(fn)
 
     wl_2d = hdulist['WAVELENGTH'].data
     diff_2d = hdulist['SKYSUB.OPT'].data
