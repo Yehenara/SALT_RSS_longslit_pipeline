@@ -106,7 +106,7 @@ import spline_pickle_test
 import test_mask_out_obscured as find_obscured_regions
 import map_distortions
 import model_distortions
-
+import find_sources
 
 wlmap_fitorder = [2, 2]
 
@@ -1448,6 +1448,66 @@ def specred(rawdir, prodir, options,
                                   name="SKYSUB.OPT")
         hdu.append(final_hdu)
 
+
+        #
+        # Add some more post-processing here:
+        # - source detection
+        # - optimal extraction of all detected sources
+        #
+
+        # compute a source list (includes source position, extent, and intensity)
+        extract1d = True
+        prof, prof_var = find_sources.continuum_slit_profile(
+            data=hdu['SKYSUB.OPT'].data.copy(),
+            sky=hdu['SKYSUB.IMG'].data.copy(),
+            wl=wls_2d,
+            var=hdu['VAR'].data.copy(),
+        )
+        if  (prof is None or prof_var is None):
+            logger.warning("Unable to extract 1-D spectra")
+            extract1d = False
+        else:
+            numpy.savetxt("source_profile", prof)
+            src_profile_imghdu = find_sources.save_continuum_slit_profile(
+                prof=prof,
+                prof_var=prof_var)
+            hdu_appends.append(src_profile_imghdu)
+
+        if (extract1d):
+            sources = find_sources.identify_sources(prof, prof_var)
+
+            if (sources is None):
+                extract1d = False
+            else:
+                #
+                # Create a ds9-compatible region file to allow user-friendly
+                #  inspection of all detected source.
+                #
+                regfile = "OBJ_%s.sources.reg" % (fb[:-5])
+                with open(regfile, "w") as src_reg:
+                    img = hdu['SCI'].data
+                    print >> src_reg, """\
+# Region file format: DS9 version 4.1
+global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+physical"""
+                    for si in sources:
+                        print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=red" % (
+                        si[0], img.shape[1], si[0])
+                        print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=green" % (
+                        si[2], img.shape[1], si[2])
+                        print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=green" % (
+                        si[3], img.shape[1], si[3])
+
+
+                #
+                # Also prepare to save all source information as TableHDU in
+                #  the output file
+                #
+                source_tbhdu = find_sources.create_source_tbhdu(sources)
+                hdu_appends.append(source_tbhdu)
+
+        if (extract1d):
+            pass
 
         hdu.extend(hdu_appends)
 

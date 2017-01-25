@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import os, sys, numpy, scipy, pyfits
+import os, sys, numpy, scipy
+import astropy.io.fits as pyfits
 
 import scipy.ndimage
 import scipy.stats
@@ -12,13 +13,24 @@ import logging
 import bottleneck
 
 
-def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG', subtract_sky=True):
+def continuum_slit_profile(hdulist=None, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG', subtract_sky=True,
+                           data=None, wl=None, sky=None, var=None):
 
     logger = logging.getLogger("ContSlitProfile")
 
-    data = hdulist[data_ext].data.copy()
-    wl = hdulist['WAVELENGTH'].data
-    sky = hdulist[sky_ext].data
+    if (hdulist is not None):
+        if (data is None):
+            data = hdulist[data_ext].data.copy()
+        if (wl is None):
+            wl = hdulist['WAVELENGTH'].data
+        if (sky is None):
+            sky = hdulist[sky_ext].data
+        if (var is None):
+            var = hdulist['VAR'].data.copy()
+
+    if (wl is None or data is None or sky is None or var is None):
+        logger.critical("Missing data to compute continuum slit profile")
+        return None, None
 
     y = data.shape[0]/2
     #sky1d = sky[y:y+1,:] #.reshape((-1,1))
@@ -135,7 +147,6 @@ def continuum_slit_profile(hdulist, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.IMG',
     out_of_range = (wl < wl_min) | (wl > wl_max)
     data[out_of_range] = numpy.NaN
 
-    var = hdulist['VAR'].data.copy()
     var[out_of_range] = numpy.NaN
 
     pyfits.PrimaryHDU(data=data).writeto("xxx", clobber=True)
@@ -281,6 +292,24 @@ def identify_sources(profile, profile_var=None):
     numpy.savetxt("sources", source_stats)
 
     return source_stats
+
+
+def create_source_tbhdu(sources):
+
+    return pyfits.BinTableHDU()
+
+
+def save_continuum_slit_profile(prof, prof_var):
+
+    #
+    # Combine both profiles
+    #
+    combined = numpy.array([prof, prof_var])
+
+    imghdu = pyfits.ImageHDU(data=combined, name='SRC_PROFILE')
+
+    return imghdu
+
 
 if __name__ == "__main__":
 
