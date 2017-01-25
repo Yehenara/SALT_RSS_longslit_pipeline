@@ -16,7 +16,9 @@ import tracespec
 import pysalt.mp_logging
 
 
-def find_background_correction(hdulist, badrows=None,
+def find_background_correction(hdulist=None,
+                               img_data=None,
+                               badrows=None,
                                sources=None, source_ext="SKYSUB.OPT",
                                dimension=1, fitorder=9):
 
@@ -30,16 +32,17 @@ def find_background_correction(hdulist, badrows=None,
         print sources
         print "\n-----"*5
 
-    if (badrows is None):
-        try:
+    if (hdulist is not None):
+        if (badrows is None):
+            print "in zero-background:", hdulist, badrows
             badrows = (hdulist['BADROWS'].data > 0)
-        except KeyError:
-            pass
-
+    if (badrows is None):
+        badrows = numpy.zeros((img_data.shape[0]), dtype=numpy.bool)
     print "bad-rows:", badrows
 
-
-    img_data = hdulist[source_ext].data.copy()
+    if (hdulist is not None):
+        if (img_data is None):
+            img_data = hdulist[source_ext].data.copy()
     if (badrows is not None):
         img_data[badrows] = numpy.NaN
 

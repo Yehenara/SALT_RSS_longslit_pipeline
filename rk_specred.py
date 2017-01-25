@@ -107,6 +107,8 @@ import test_mask_out_obscured as find_obscured_regions
 import map_distortions
 import model_distortions
 import find_sources
+import zero_background
+import tracespec
 
 wlmap_fitorder = [2, 2]
 
@@ -1507,7 +1509,39 @@ physical"""
                 hdu_appends.append(source_tbhdu)
 
         if (extract1d):
+            fullframe_background = zero_background.find_background_correction(
+                img_data=hdu['SKYSUB.OPT'].data.copy(),
+                sources=sources,
+                badrows=bad_rows,
+            )
+            if (fullframe_background is not None):
+                hdu['SKYSUB.OPT'].data -= fullframe_background
+                hdu.append(fits.ImageHDU(data=fullframe_background,
+                                         name="SKY.RESIDUALS"))
+
+            # now pick the brightest of all sources
+            i_brightest = numpy.argmax(sources[:, 1])
+            print i_brightest
+            print sources[i_brightest]
+            brightest = sources[i_brightest]
+
+            # Now trace the line
+            print "computing spectrum trace"
+            spec_data = hdu['SKYSUB.OPT'].data.copy()
+            center_x = spec_data.shape[1] / 2
+            spectrace_data = tracespec.compute_spectrum_trace(
+                data=spec_data,
+                start_x=center_x,
+                start_y=brightest[0],
+                xbin=5)
+
+            print "finding trace slopes"
+            slopes, trace_offset = tracespec.compute_trace_slopes(
+                spectrace_data)
+
             pass
+
+
 
         hdu.extend(hdu_appends)
 
