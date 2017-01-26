@@ -91,7 +91,7 @@ physical
         #
         # Also consider the typical scatter in center positions
         #
-        median_pos_scatter = numpy.median(linedata_std[:,8])
+        median_pos_scatter = numpy.nanmedian(linedata_std[:,8])
         logger.info("Median position scatter: %f" % (median_pos_scatter))
 
         # compute the wavelength error from the actual line position
@@ -107,12 +107,16 @@ physical
     all_lines = numpy.array(all_lines)
     print all_lines.shape
 
-    wl_dist = all_lines[:, :, [7, 0, 9]] # wl,y,d_wl
-    print wl_dist.shape
-    x = wl_dist.reshape((-1,wl_dist.shape[2]))
-    print x.shape
-    numpy.savetxt("distortion_model.in", x)
-
+    try:
+        wl_dist = all_lines[:, :, [7, 0, 9]] # wl,y,d_wl
+        print wl_dist.shape
+        x = wl_dist.reshape((-1,wl_dist.shape[2]))
+        print x.shape
+        numpy.savetxt("distortion_model.in", x)
+    except IndexError:
+        logger.error("Index error when trying to create the distortion "
+                     "model data (%s)" % (str(all_lines.shape)))
+        return None, None
 
     #
     # Now convert all the data we have into a full 2-d model in wl & x
