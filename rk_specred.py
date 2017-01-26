@@ -109,6 +109,7 @@ import model_distortions
 import find_sources
 import zero_background
 import tracespec
+import optimal_extraction
 
 wlmap_fitorder = [2, 2]
 
@@ -1526,7 +1527,7 @@ physical"""
             brightest = sources[i_brightest]
 
             # Now trace the line
-            print "computing spectrum trace"
+            logger.info("computing spectrum trace")
             spec_data = hdu['SKYSUB.OPT'].data.copy()
             center_x = spec_data.shape[1] / 2
             spectrace_data = tracespec.compute_spectrum_trace(
@@ -1535,7 +1536,7 @@ physical"""
                 start_y=brightest[0],
                 xbin=5)
 
-            print "finding trace slopes"
+            logger.info("finding trace slopes")
             slopes, trace_offset = tracespec.compute_trace_slopes(
                 spectrace_data)
             hdu_appends.append(tracespec.save_trace_offsets(trace_offset))
@@ -1544,7 +1545,123 @@ physical"""
             #hdu[0].header['TRACE0_0']
             pass
 
+            logger.info("generating source profile in prep for optimal "
+                        "extraction")
+            width = 2 * (brightest[3] - brightest[2])
+            source_profile_2d = optimal_extraction.generate_source_profile(
+                data=hdu['SKYSUB.OPT'].data,
+                variance=hdu['VAR'].data,
+                wavelength=wls_2d,
+                trace_offset=trace_offset,
+                position=[center_x, brightest[0]],
+                width=width,
+            )
+            print "source profile 2d", source_profile_2d.shape, \
+                "\n", source_profile_2d
 
+            logger.info("computing optimal extraction weights")
+            supersample = 2
+            optimal_weight = optimal_extraction.integrate_source_profile(
+                width=width,
+                supersample=supersample,
+                profile2d=source_profile_2d,
+                wl_resolution=-5,
+            )
+            logger.info("done with weights, ready for extraction!")
+
+        d_width = brightest[2:4] - brightest[0]
+        y_ranges = [d_width]
+        results = optimal_extraction.optimal_extract(
+            img_data=hdu['SKYSUB.OPT'].data,
+            wl_data=hdu['WAVELENGTH'].data,
+            variance_data=hdu['VAR'].data,
+            trace_offset=trace_offset,
+            optimal_weight=optimal_weight,
+            opt_weight_center_y=brightest[0],
+            reference_x=center_x,
+            reference_y=brightest[0],
+            y_ranges=y_ranges,
+            dwl=0.5,
+        )
+
+        #
+        # extract individual data from return data
+        #
+        spectra_1d = results['spectra']
+        variance_1d = results['variance']
+        wl0 = results['wl0']
+        dwl = results['dwl']
+        out_wl = results['wl_base']
+
+        #
+        # Finally, merge wavelength data and flux and write output to file
+        #
+        output_format = ["ascii", "fits"]
+        # out_fn = "opt_extract"
+        if ("fits" in output_format or True):
+            # out_fn_fits = out_fn + ".fits"
+            # logger.info("Writing FITS output to %s" % (out_fn))
+            #
+            # extlist = [fits.PrimaryHDU()]
+
+            spec1d_hdus = []
+            for i, part in enumerate(['BEST', 'WEIGHTED', 'SUM']):
+                spec1d_hdus.append(
+                    fits.ImageHDU(data=spectra_1d[:, :, i].T,
+                                  name="SCI.%s" % (part), )
+                )
+                spec1d_hdus.append(
+                    fits.ImageHDU(data=variance_1d[:, :, i].T,
+                                  name="VAR.%s" % (part), )
+                )
+
+            # add headers for the wavelength solution
+            for ext in spec1d_hdus:  # ['SCI', 'VAR']:
+                ext.header['WCSNAME'] = "calibrated wavelength"
+                ext.header['CRPIX1'] = 1.
+                ext.header['CRVAL1'] = wl0
+                ext.header['CD1_1'] = dwl
+                ext.header['CTYPE1'] = "AWAV"
+                ext.header['CUNIT1'] = "Angstrom"
+                for i, yr in enumerate(y_ranges):
+                    keyname = "YR_%03d" % (i + 1)
+                    value = "%04d:%04d" % (yr[0], yr[1])
+                    ext.header[keyname] = (
+                    value, "y-range for aperture %d" % (i + 1))
+            #hdulist.writeto(out_fn_fits, clobber=True)
+
+            hdu_appends.extend(spec1d_hdus)
+            #logger.info("done writing results (%s)" % (out_fn_fits))
+
+        if ("ascii" in output_format):
+            out_fn_ascii = "OBJ_%s.dat" % (fb[:-5])
+            out_fn_asciivar = "OBJ_%s.var" % (fb[:-5])
+            logger.info("Writing output as ASCII to %s / %s" % (out_fn_ascii,
+                                                                out_fn_asciivar))
+
+            with open(out_fn_ascii, "w") as of:
+                for aper, yr in enumerate(y_ranges):
+                    print >> of, "# APERTURE: ", yr
+                    numpy.savetxt(of, numpy.append(out_wl.reshape((-1, 1)),
+                                                   spectra_1d[:, aper, :],
+                                                   axis=1
+                                                   )
+                                  )
+                    print >> of, "\n" * 5
+
+            with open(out_fn_asciivar, "w") as of:
+                for aper, yr in enumerate(y_ranges):
+                    print >> of, "# APERTURE: ", yr
+                    numpy.savetxt(of, numpy.append(out_wl.reshape((-1, 1)),
+                                                   variance_1d[:, aper, :],
+                                                   axis=1
+                                                   )
+                                  )
+                    print >> of, "\n" * 5
+            # numpy.savetxt(out_fn + ".var",
+            #               numpy.append(out_wl.reshape((-1, 1)),
+            #                            variance_1d, axis=1))
+            logger.info("done writing ASCII results")
 
         hdu.extend(hdu_appends)
 
