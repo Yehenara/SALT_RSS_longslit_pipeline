@@ -744,6 +744,11 @@ def specred(rawdir, prodir, options,
             arc_mosaic_filename = "ARC_m_%s" % (fb)
             rect_filename = "ARC-RECT_%s" % (fb)
 
+            if (os.path.isfile(arc_mosaic_filename) and options.reusearcs):
+                arc_mosaic_list[idx] = arc_mosaic_filename
+                logger.info("Re-using ARC %s from previous run" % (arc_mosaic_filename))
+                continue
+
             logger.info("Creating MEF  for frame %s --> %s" % (fb, arc_filename))
             hdu = salt_prepdata(filename,
                                 badpixelimage=None,
@@ -1067,13 +1072,17 @@ def specred(rawdir, prodir, options,
         #
         # Fit and include the wavelength distortion (based on sky-lines) in the wavelength calibration
         #
-        distortion_2d, dist_quality = model_distortions.map_wavelength_distortions(
-            skyline_list=skyline_list,
-            wl_2d=wls_2d,
-            img_2d=img_crjclean,
-            diff_2d=None,
-            badrows=bad_rows_img,
-        )
+        if (options.model_wl_distortions):
+            distortion_2d, dist_quality = model_distortions.map_wavelength_distortions(
+                skyline_list=skyline_list,
+                wl_2d=wls_2d,
+                img_2d=img_crjclean,
+                diff_2d=None,
+                badrows=bad_rows_img,
+            )
+        else:
+            logger.info("Per user-request skipping WL distortion modeling")
+            distortion_2d = None
 
         if (distortion_2d is not None):
             wls_2d -= distortion_2d
@@ -1145,17 +1154,17 @@ def specred(rawdir, prodir, options,
         #
         # Map wavelength distortions
         #
-        try:
-            print skyline_list.shape
-            distortions, distortions_binned = map_distortions.map_distortions(
-                wl_2d=wls_2d,
-                diff_2d=None,
-                img_2d = img_raw,
-                y=610,
-                x_list=skyline_list[:,0],
-            )
-        except:
-            pass
+        # try:
+        #     print skyline_list.shape
+        #     distortions, distortions_binned = map_distortions.map_distortions(
+        #         wl_2d=wls_2d,
+        #         diff_2d=None,
+        #         img_2d = img_raw,
+        #         y=610,
+        #         x_list=skyline_list[:,0],
+        #     )
+        # except:
+        #     pass
 
         # logger.info("Adding xxx extension")
         # hdu.append(fits.ImageHDU(header=hdu['SCI'].header,
@@ -2179,6 +2188,11 @@ if __name__ == '__main__':
                       default="xxx")
     parser.add_option("-d", "--debug", dest="debug",
                        action="store_true", default=False)
+    parser.add_option("", "--reusearcs", dest="reusearcs",
+                      action="store_true", default=False)
+    parser.add_option("", "--nowldist", dest="model_wl_distortions",
+                      action="store_false", default=True)
+
     (options, cmdline_args) = parser.parse_args()
 
     print options
