@@ -32,6 +32,7 @@ def continuum_slit_profile(hdulist=None, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.
         logger.critical("Missing data to compute continuum slit profile")
         return None, None
 
+    fits.PrimaryHDU(data=data).writeto("yyy", clobber=True)
     y = data.shape[0]/2
     #sky1d = sky[y:y+1,:] #.reshape((-1,1))
     sky1d = sky[y,:] #.reshape((-1,1))
@@ -202,14 +203,18 @@ def identify_sources(profile, profile_var=None):
     #
     # Get a noise-estimate by iteratively rejecting strong features
     #
+    valid = numpy.isfinite(signal)
     for iter in range(3):
-        stats = scipy.stats.scoreatpercentile(signal, [16,50,84], limit=[-1e9,1e9])
+        stats = scipy.stats.scoreatpercentile(signal[valid], [16,50,84],
+                                              limit=[-1e9,1e9])
         one_sigma = (stats[2] - stats[0]) / 2.
         median = stats[1]
+        print stats
         #print iter, stats
         # mask all pixels outside the 3-sigma range as bad
         bad = (signal > (median + 3*one_sigma)) | (signal < (median - 3*one_sigma))
         signal[bad] = numpy.NaN
+        valid[bad] = False
         numpy.savetxt("signal.%d" % (iter+1), signal)
 
     #
@@ -318,9 +323,14 @@ if __name__ == "__main__":
 
     hdulist = fits.open(sys.argv[1])
 
-    profile = continuum_slit_profile(hdulist)
-    sources = identify_sources(profile)
+    # profile = continuum_slit_profile(hdulist)
+    # sources = identify_sources(profile)
 
+    prof, prof_var = continuum_slit_profile(hdulist)
+    numpy.savetxt("source_profile", prof)
+    sources = identify_sources(prof, prof_var)
+
+    print sources
 
     pysalt.mp_logging.shutdown_logging(logger_setup)
 
