@@ -168,17 +168,35 @@ def continuum_slit_profile(hdulist=None, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.
     return intensity_profile, intensity_error
 
 
-def identify_sources(profile, profile_var=None):
+def identify_sources(profile, profile_var=None,
+                     min_peak_s2n=4,
+                     psf_size=3,
+                     pre_median_width=3):
 
     logger = logging.getLogger("IdentifySources")
 
     #
     # Smooth profile to get rid of noise spikes
     #
-    gauss_width = 1
+    gauss_width = psf_size
     logger.info("Applying %.1f pixel gauss filter in spectral dir" % (gauss_width))
 
-    smoothed = scipy.ndimage.filters.gaussian_filter(profile.reshape((-1,1)), (gauss_width,0), 
+    #
+    # First, apply a small-scale median filter to get rid of single-row
+    # spikes due to cosmics
+    #
+    pre_med = scipy.ndimage.filters.median_filter(
+        input=profile,
+        size=(pre_median_width),
+        footprint=None,
+        output=None,
+        mode='reflect',
+        cval=0.0,
+        origin=0)
+    numpy.savetxt("prof.premed", pre_med)
+
+    smoothed = scipy.ndimage.filters.gaussian_filter(pre_med.reshape((-1,1)),
+                                                     (gauss_width,0),
                                                         mode='constant', cval=0,
     )
 
@@ -186,8 +204,8 @@ def identify_sources(profile, profile_var=None):
     # Approximate a continuum by applying a wider median filter
     #
     cont = scipy.ndimage.filters.median_filter(
-        input=profile,
-        size=(75), 
+        input=pre_med,
+        size=(175),
         footprint=None, 
         output=None, 
         mode='reflect', 
@@ -197,7 +215,7 @@ def identify_sources(profile, profile_var=None):
     numpy.savetxt("prof.gauss1", smoothed)
     numpy.savetxt("prof.cont", cont)
 
-    signal = profile - cont
+    signal = pre_med - cont
     smooth_signal = (smoothed[:,0] - cont)
 
     #
@@ -222,39 +240,9 @@ def identify_sources(profile, profile_var=None):
     # sources are
     #
     noise_level = numpy.var(signal[numpy.isfinite(signal)])
-    logger.debug("Noise level: %f / %f" % (one_sigma, noise_level))
+    logger.info("Noise level: %f / %f" % (one_sigma, noise_level))
+    noise_level = one_sigma
 
-    peaks = scipy.signal.find_peaks_cwt(
-        vector=(smoothed[:,0]-cont), 
-        widths=numpy.array([5]), 
-        wavelet=None, 
-        max_distances=None, 
-        gap_thresh=None, 
-        min_length=None, 
-        min_snr=2, 
-        noise_perc=10,
-        )
-    peaks = numpy.array(peaks)
-    logger.debug("Raw peak list:\n%s" % (peaks))
-    
-    #
-    # Now we have a bunch of potential sources
-    # make sure they are significant enough
-    #
-    peak_intensities = smooth_signal[peaks]
-    #print peak_intensities
-    s2n = peak_intensities / noise_level
-    #print s2n
-
-    # above threshold
-    significant = (s2n > 3.)
-    threshold = 3 * noise_level
-    #print significant
-
-    #print type(peaks)
-
-    logger.debug("final list of peaks: %s" % (peaks[significant]))
-    sources = peaks[significant]
 
     #
     # Compute slope product to test for slope continuity
@@ -267,6 +255,54 @@ def identify_sources(profile, profile_var=None):
     slope_product = d1 * d2
     numpy.savetxt("prof.slopeprod", slope_product)
 
+    s2n = smooth_signal / noise_level
+    # select raw peak catalog as all peaks with s/n > 3
+    print slope_product.shape, slope_input.shape
+    valid_peak = (slope_product > 0) & (s2n > min_peak_s2n) & (d1 > 0)
+    peak_positions = numpy.arange(slope_input.shape[0])[valid_peak]
+    numpy.savetxt("prof.peaks2",
+                  numpy.array([peak_positions,
+                               slope_input[valid_peak],
+                               s2n[valid_peak]
+                               ]).T
+    )
+
+    # peaks = scipy.signal.find_peaks_cwt(
+    #     vector=(smoothed[:,0]-cont),
+    #     widths=numpy.array([5]),
+    #     wavelet=None,
+    #     max_distances=None,
+    #     gap_thresh=None,
+    #     min_length=None,
+    #     min_snr=2,
+    #     noise_perc=10,
+    #     )
+    # peaks = numpy.array(peaks)
+    # logger.debug("Raw peak list:\n%s" % (peaks))
+    # numpy.savetxt("raw_peaks", peaks)
+
+    #
+    # Now we have a bunch of potential sources
+    # make sure they are significant enough
+    #
+    # peak_intensities = smooth_signal[peaks]
+    # #print peak_intensities
+    # s2n = peak_intensities / noise_level
+    # numpy.savetxt("sources.s2n",
+    #               numpy.array([peaks, peak_intensities, s2n]).T)
+    # #print s2n
+    #
+    # above threshold
+    # significant = (s2n > 3.)
+    threshold = 3 * noise_level
+    # #print significant
+    #
+    # #print type(peaks)
+
+    # logger.debug("final list of peaks: %s" % (peaks[significant]))
+    # sources = peaks[significant]
+
+    sources = peak_positions
     
     #
     # Now use the slope product to find the maximum extent of each source
@@ -277,7 +313,7 @@ def identify_sources(profile, profile_var=None):
     #
     source_stats = numpy.empty((sources.shape[0],4))
     source_stats[:,0] = sources[:]
-    source_stats[:,1] = s2n[significant]
+    source_stats[:,1] = s2n[valid_peak] #s2n[significant]
 
     pixel_coord = numpy.arange(smooth_signal.shape[0])
     for si, source in enumerate(sources):
@@ -286,8 +322,13 @@ def identify_sources(profile, profile_var=None):
 
         on_left = pixel_coord < source
         on_right = pixel_coord > source
-        left = numpy.max(pixel_coord[out_of_source & on_left])
-        right = numpy.min(pixel_coord[out_of_source & on_right])
+
+        _leftpixels = pixel_coord[out_of_source & on_left]
+        left = numpy.max(_leftpixels) if _leftpixels.size > 0 else 0
+
+        _rightpixels = pixel_coord[out_of_source & on_right]
+        right = numpy.min(_rightpixels) if _rightpixels.size > 0 else \
+            profile.shape[0]
         #print left, right
         #print
 
@@ -316,6 +357,25 @@ def save_continuum_slit_profile(prof, prof_var):
     return imghdu
 
 
+def write_source_region_file(img_shape, sources, outfile):
+
+    with open(outfile, "w") as src_reg:
+        print >> src_reg, """\
+    # Region file format: DS9 version 4.1
+    global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
+    physical"""
+        for source_id, si in enumerate(sources):
+            print >> src_reg, "line(0,%d,%d,%d) # line=0 0 " \
+                              "color=red text={Source %d}" % (
+                                  si[0], img_shape[1], si[0], source_id + 1)
+            print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=green" % (
+                si[2], img_shape[1], si[2])
+            print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=green" % (
+                si[3], img_shape[1], si[3])
+
+    return
+
+
 if __name__ == "__main__":
 
     logger_setup = pysalt.mp_logging.setup_logging()
@@ -330,7 +390,12 @@ if __name__ == "__main__":
     numpy.savetxt("source_profile", prof)
     sources = identify_sources(prof, prof_var)
 
-    print sources
+    print "sources:\n",sources
 
+    write_source_region_file(
+        img_shape=hdulist['SCI'].data.shape,
+        sources=sources,
+        outfile="find_sources.reg",
+    )
     pysalt.mp_logging.shutdown_logging(logger_setup)
 
