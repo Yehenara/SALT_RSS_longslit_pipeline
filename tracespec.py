@@ -90,6 +90,7 @@ def compute_spectrum_trace(data, start_x, start_y, xbin=1):
 
 def compute_trace_slopes(tracedata, n_iter=3, polyorder=1):
 
+    logger = logging.getLogger("ComputeTraceSlopes")
     npixels = tracedata.shape[0] #tracedata[-1,0]
     detector_size = npixels / 3
 
@@ -136,16 +137,16 @@ def compute_trace_slopes(tracedata, n_iter=3, polyorder=1):
 
         poly_fits[detector] = poly
 
-        print "Detector %d: %s" % (detector+1, str(poly))
+        logger.debug("Detector %d: %s" % (detector+1, str(poly)))
         numpy.savetxt("det_trace.%d" % (detector + 1), detector_trace)
 
     # Now compensate all slopes to be offsets relative to the trace at the center of the detector
     poly_fits = numpy.array(poly_fits)
-    numpy.savetxt(sys.stdout, poly_fits)
+    # numpy.savetxt(sys.stdout, poly_fits)
 
     mid_x = 0.5 * npixels
     center_y = numpy.polyval(poly_fits[1], mid_x)
-    print center_y
+    # print center_y
 
     trace_offset = numpy.zeros((npixels))
     for detector in range(3):
