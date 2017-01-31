@@ -110,6 +110,7 @@ import find_sources
 import zero_background
 import tracespec
 import optimal_extraction
+import plot_high_res_sky_spec
 
 wlmap_fitorder = [2, 2]
 
@@ -899,7 +900,8 @@ def specred(rawdir, prodir, options,
         logger.info("Using binning of %d x %d (spectral/spatial)" % (binx, biny))
 
         mosaic_filename = "OBJ_raw__%s" % (fb)
-        out_filename = "OBJ_%s" % (fb)
+        output_basename = "OBJ_%s" % (fb[:-5])
+        out_filename =  "%s.fits" % (output_basename)
 
         grating = hdulist[0].header['GRATING']
         grating_angle = hdulist[0].header['GR-ANGLE']
@@ -1068,6 +1070,9 @@ def specred(rawdir, prodir, options,
         skylines, skyline_list = prep_science.find_nightsky_lines(
             data=numpy.array(in_data),
         )
+        #
+        # TODO: CONVERT SKYLINE POSITION FROM PIXELS TO WAVELENGTHS
+        #
 
         #
         # Fit and include the wavelength distortion (based on sky-lines) in the wavelength calibration
@@ -1149,7 +1154,7 @@ def specred(rawdir, prodir, options,
         numpy.savetxt(sys.stdout, skyline_list, "%9.3f")
         numpy.savetxt("nightsky_lines", skyline_list)
 
-        hdu_appends.append(prep_science.add_skylines_as_tbhdu(skyline_list))
+        hdu_appends.append(prep_science.q(skyline_list))
 
         #
         # Map wavelength distortions
@@ -1274,6 +1279,19 @@ def specred(rawdir, prodir, options,
         hdu.append(fits.ImageHDU(data=good_sky_data.astype(numpy.int),
                                  name="GOOD_SKY_DATA"))
 
+        #
+        # Create a diagnostic plot showing the sky-spectrum and the
+        # sky-fit spline used for sky-subtraction
+        #
+        plot_high_res_sky_spec.plot_sky_spectrum(
+            wl=wls_2d,
+            flux=flattened_img,
+            good_sky_data=good_sky_data,
+            bad_rows=bad_rows,
+            output_filebase=fb[:-5]+".skyspec",
+            sky_spline=spline,
+            ext_list=['png'],
+        )
         # recompute sky-2d based on the full wavelength map and the spline interpolator
         # sky_2d = spline(wls_2d)
 
@@ -1505,7 +1523,7 @@ def specred(rawdir, prodir, options,
                 #  inspection of all detected source.
                 #
                 find_sources.write_source_region_file(
-                    img_shape=img.shape,
+                    img_shape=hdu['SCI'].data.shape,
                     sources=sources,
                     outfile="OBJ_%s.sources.reg" % (fb[:-5]),
                 )
@@ -1552,7 +1570,7 @@ def specred(rawdir, prodir, options,
                 spectrace_data)
             hdu_appends.append(tracespec.save_trace_offsets(trace_offset))
 
-            print slopes
+            # print slopes
             #hdu[0].header['TRACE0_0']
             pass
 
@@ -1584,6 +1602,13 @@ def specred(rawdir, prodir, options,
                 )
                 logger.info("done with weights, ready for extraction!")
 
+                #
+                # Extract the 1-d spectrum, applying weights, and
+                # re-drizzling all flux to a simple wavelength grid using
+                # twice the mean dispersion (in A/px) of the input data
+                #
+                min_wl, max_wl = numpy.min(wls_2d), numpy.max(wls_2d)
+                mean_dispersion = (max_wl - min_wl) / wls_2d.shape[1]
                 d_width = source[2:4] - source[0]
                 y_ranges = [d_width]
                 results = optimal_extraction.optimal_extract(
@@ -1596,7 +1621,8 @@ def specred(rawdir, prodir, options,
                     reference_x=center_x,
                     reference_y=source[0],
                     y_ranges=y_ranges,
-                    dwl=0.5,
+                    dwl=0.5*mean_dispersion,
+                    debug_filebase=fb[:-5]+"__"
                 )
 
                 #
