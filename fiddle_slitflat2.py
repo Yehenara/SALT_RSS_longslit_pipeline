@@ -62,7 +62,9 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
 
     profiles = numpy.empty((wl.shape[0], wl_centers.shape[0]))
     profiles[:,:] = numpy.NaN
-    print profiles.shape
+    # print profiles.shape
+    logger.info("profile parameters: %d wavelengths, %d rows" % (
+        profiles.shape[0], profiles.shape[1]))
 
     # prepare an undersampled y grid to keep processing times in check
     # based on this grid we can then interpolate up to the full resolution needed during reduction
@@ -92,7 +94,7 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
                 logger.debug("No data found for %f +/- %f" % (cwl, wl_steps))
                 continue
 
-            print prof.shape, profiles.shape, profiles_sparse.shape
+            # print prof.shape, profiles.shape, profiles_sparse.shape
 
             profiles[:,i_wl][~bad_rows] = prof
 
