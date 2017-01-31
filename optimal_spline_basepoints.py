@@ -493,8 +493,8 @@ def optimal_sky_subtraction(obj_hdulist,
         logger.info("Adding sky-samples for line edges")
         
         
-        dl = 1.
-        dn = 10
+        dl = 3.
+        dn = 50
 
         if (use_fast_edges):
             logger.info("Using fast-edge method")
@@ -636,9 +636,11 @@ def optimal_sky_subtraction(obj_hdulist,
 
     spline_iter = None
     n_iterations = 3
+    logger.info("Starting iteratively (%dx) computing best sky-spectrum, "
+                "using noise-mode %s" % (n_iterations, noise_mode))
     for iteration in range(n_iterations):
 
-        logger.info("Iteratively computing best sky-spectrum, step %d of %d" % (
+        logger.info("Starting sky-spectrum iteration %d of %d" % (
             iteration+1, n_iterations)
         )
         # compute spline
@@ -804,8 +806,8 @@ def optimal_sky_subtraction(obj_hdulist,
 
             # Now mark all pixels exceeding the noise threshold as outliers
 
-            not_outlier = numpy.fabs(dflux) < var_at_pixel
-            outlier = numpy.fabs(dflux) > var_at_pixel
+            not_outlier = numpy.fabs(dflux) < 3*var_at_pixel
+            outlier = numpy.fabs(dflux) > 3*var_at_pixel
 
 
         elif (noise_mode == 'global'):
