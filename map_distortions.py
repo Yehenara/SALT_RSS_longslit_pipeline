@@ -30,7 +30,7 @@ def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None):
     masked = numpy.array(img_2d)
     masked[~numpy.isfinite(masked)] = 1e9
     bias_level = numpy.percentile(masked, 3)
-    print "BIAS:", bias_level
+    logger.debug("Correcting input for global bias level: %f" % (bias_level))
 
     masked -= bias_level
     img_2d -= bias_level
@@ -43,7 +43,8 @@ def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None):
 
         wl = wl_2d[iy,ix]
         # print x,y,"-->",wl
-        logger.info("Mapping distortions around x=%4d/y=%4d (lambda=%7.2f A)" % (x,y,wl))
+        logger.debug("Mapping distortions around x=%4d/y=%4d (lambda=%7.2f A)"
+                  % (x,y,wl))
 
         _y, _x = numpy.indices(wl_2d.shape)
 
