@@ -371,6 +371,7 @@ def optimal_extract(img_data, wl_data, variance_data,
                     minwl=-1, maxwl=-1, dwl=-1,
                     y_ranges=None,
                     reference_x=None, reference_y=None,
+                    debug_filebase=None,
                     ):
 
     logger = logging.getLogger("OptimalDrizzleSpec")
@@ -411,7 +412,8 @@ def optimal_extract(img_data, wl_data, variance_data,
     dy0 = trace_offset[reference_x]
     corrected_y = y_raw + 1.0 - trace_offset + dy0 # add 1 pixel for FITS conformity
     logger.info("Trace offset at reference x=+%d: %f" % (reference_x, dy0))
-    numpy.savetxt("corrected_y", corrected_y.ravel())
+    if (debug_filebase is not None):
+        numpy.savetxt(debug_filebase+"corrected_y", corrected_y.ravel())
 
     # Now prepare the output array
     out_wl_count = int((wlmax - wl0) / dwl) + 1
@@ -434,7 +436,7 @@ def optimal_extract(img_data, wl_data, variance_data,
         y2 = _yrange[1]
         logger.info("Extracting 1-D spectrum from columns %d --- %d" % (y1, y2))
 
-        xxx = open("dump_%d-%d" % (y1, y2), "w")
+        # xxx = open("dump_%d-%d" % (y1, y2), "w")
 
         #
         # extract data
@@ -455,7 +457,9 @@ def optimal_extract(img_data, wl_data, variance_data,
         logger.info("total # of input pixels: %d" % (spec_img_data.size))
 
         spec_y_data = corrected_y[in_y_range]
-        numpy.savetxt("spec_y_data", spec_y_data)
+        if (debug_filebase is not None):
+            numpy.savetxt(debug_filebase+"spec_y_data", spec_y_data)
+
         # if (opt_weight_center_y is not None):
         #     logger.info("correcting extraction center to match optimal extraction weights")
         #     spec_y_data -= opt_weight_center_y
@@ -466,11 +470,13 @@ def optimal_extract(img_data, wl_data, variance_data,
             logger.info("Computing optimal extraction weights for all input pixels")
             weight_data = optimal_weight.get_weight(
                 wl=spec_wl_data, y=spec_y_data)
-            c = numpy.empty((spec_wl_data.ravel().shape[0], 3))
-            c[:,0] = spec_wl_data.ravel()
-            c[:,1] = spec_y_data.ravel()
-            c[:,2] = weight_data.ravel()
-            numpy.savetxt("weight_data", c)
+
+            if (debug_filebase is not None):
+                c = numpy.empty((spec_wl_data.ravel().shape[0], 3))
+                c[:,0] = spec_wl_data.ravel()
+                c[:,1] = spec_y_data.ravel()
+                c[:,2] = weight_data.ravel()
+                numpy.savetxt(debug_filebase+"weight_data", c)
 
             optimal_normalization = optimal_weight.get_normalization(y1,y2)
             logger.info("Using relative normalization of %f" % (optimal_normalization))
@@ -571,18 +577,8 @@ def optimal_extract(img_data, wl_data, variance_data,
         else:
             opt_weights_drizzled = numpy.ones_like(drizzled_flux)
 
-        numpy.savetxt("drizzled_spec.2d.%d-%d" % (y1,y2),
-                      numpy.array([_x.ravel(),
-                                   _y.ravel(),
-                                   drizzled_flux.ravel(),
-                                   drizzled_var.ravel(),
-                                   opt_weights_drizzled.ravel(),
-                                   drizzled_npix.ravel(),
-                                   ]).T
-                      )
 
         spec_1d_sum = numpy.nansum(drizzled_flux, axis=1)
-        numpy.savetxt("drizzled_spec.simple.%d-%d" % (y1,y2), spec_1d_sum)
 
         _spec_1d_weighted = \
             numpy.nansum((drizzled_flux * opt_weights_drizzled),
@@ -594,8 +590,7 @@ def optimal_extract(img_data, wl_data, variance_data,
         #     (drizzled_flux * opt_weights_drizzled), axis=1) / numpy.sum(
         #     opt_weights_drizzled, axis=1)
         spec_1d_optimal = _spec_1d_weighted / _spec_1d_weights
-        print spec_1d_optimal.shape
-        numpy.savetxt("drizzled_spec.1d.%d-%d" % (y1,y2), spec_1d_optimal)
+        # print spec_1d_optimal.shape
 
 
 
@@ -607,9 +602,29 @@ def optimal_extract(img_data, wl_data, variance_data,
         logger.info("Scaling factor from optimally weighted average to "
                     "simple sum: %f" % (flux_scaling))
 
-        print type(flux_scaling)
+        # print type(flux_scaling)
         spec_1d_final = spec_1d_optimal * flux_scaling
-        numpy.savetxt("drizzled_spec.final.%d-%d" % (y1,y2), spec_1d_final)
+
+
+        if (debug_filebase is not None):
+            numpy.savetxt(debug_filebase+"drizzled_spec.2d.%d-%d" % (y1,y2),
+                      numpy.array([_x.ravel(),
+                                   _y.ravel(),
+                                   drizzled_flux.ravel(),
+                                   drizzled_var.ravel(),
+                                   opt_weights_drizzled.ravel(),
+                                   drizzled_npix.ravel(),
+                                   ]).T
+                      )
+
+            numpy.savetxt(debug_filebase+"drizzled_spec.simple.%d-%d" % (y1,
+                                                                         y2), \
+                           spec_1d_sum)
+            numpy.savetxt(debug_filebase+"drizzled_spec.1d.%d-%d" % (y1, y2), \
+                           spec_1d_optimal)
+            numpy.savetxt(debug_filebase+"drizzled_spec.final.%d-%d" % (y1,
+                                                                        y2), \
+                           spec_1d_final)
 
         #
         # Repeat the same arithmetic for the variance data
