@@ -27,7 +27,9 @@ def calculate_local_noise(data, basepoints, select=None, dumpdebug=False, operat
 
     #print "selecting & computing noise"
     noise = numpy.empty((basepoints.shape[0], data.shape[1]))
-    print "Shapes noise/basepoints/padded/data:", noise.shape, basepoints.shape, padded.shape, data.shape
+    logger.debug("Shapes noise/basepoints/padded/data: %s/%s/%s/%s" % (
+                 str(noise.shape), str(basepoints.shape),
+                 str(padded.shape), str(data.shape)))
 
     noise[:,:] = numpy.NaN
     for p in range(basepoints.shape[0]):
