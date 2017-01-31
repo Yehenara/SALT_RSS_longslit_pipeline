@@ -526,7 +526,7 @@ def specred(rawdir, prodir, options,
     # if (type(infile) == list):
     #     infile_list = infile
     # elif (type(infile) == str and os.path.isdir(infile)):
-    infile_list = glob.glob(rawdir + '*.fits')
+    infile_list = glob.glob(os.path.join(rawdir, "*.fits"))
 
     # get the current date for the files
     obsdate = os.path.basename(infile_list[0])[1:9]
@@ -1504,22 +1504,11 @@ def specred(rawdir, prodir, options,
                 # Create a ds9-compatible region file to allow user-friendly
                 #  inspection of all detected source.
                 #
-                regfile = "OBJ_%s.sources.reg" % (fb[:-5])
-                with open(regfile, "w") as src_reg:
-                    img = hdu['SCI'].data
-                    print >> src_reg, """\
-# Region file format: DS9 version 4.1
-global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1
-physical"""
-                    for source_id, si in enumerate(sources):
-                        print >> src_reg, "line(0,%d,%d,%d) # line=0 0 " \
-                                          "color=red text={Source %d}" % (
-                        si[0], img.shape[1], si[0], source_id+1)
-                        print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=green" % (
-                        si[2], img.shape[1], si[2])
-                        print >> src_reg, "line(0,%d,%d,%d) # line=0 0 color=green" % (
-                        si[3], img.shape[1], si[3])
-
+                find_sources.write_source_region_file(
+                    img_shape=img.shape,
+                    sources=sources,
+                    outfile="OBJ_%s.sources.reg" % (fb[:-5]),
+                )
 
                 #
                 # Also prepare to save all source information as TableHDU in
@@ -2198,15 +2187,16 @@ if __name__ == '__main__':
     parser.add_option("", "--nowldist", dest="model_wl_distortions",
                       action="store_false", default=True)
     parser.add_option("", "--noisemode", dest='sky_noise_mode',
-                      default="synthetic")
+                      default="local1")
 
     (options, cmdline_args) = parser.parse_args()
 
     print options
     print cmdline_args
 
-    rawdir = cmdline_args[0]
-    prodir = os.path.curdir + '/'
-    specred(rawdir, prodir, options)
+    for raw_dir in cmdline_args[0:]:
+        #rawdir = cmdline_args[0]
+        prodir = os.path.curdir + '/'
+        specred(raw_dir, prodir, options)
 
     pysalt.mp_logging.shutdown_logging(logger)
