@@ -1265,9 +1265,14 @@ def specred(rawdir, prodir, options,
             wlmode=options.wlmode,
             debug_prefix="%s__" % (fb[:-5]),
             image_data=flattened_img,
-            obj_wl=wls_2d
+            obj_wl=wls_2d,
+            debug=options.debug,
+            noise_mode=options.sky_noise_mode,
         )
-        (x_eff, wl_map, medians, p_scale, p_skew, fm) = extra
+        (x_eff, wl_map, medians, p_scale, p_skew, fm, good_sky_data) = extra
+
+        hdu.append(fits.ImageHDU(data=good_sky_data.astype(numpy.int),
+                                 name="GOOD_SKY_DATA"))
 
         # recompute sky-2d based on the full wavelength map and the spline interpolator
         # sky_2d = spline(wls_2d)
@@ -2192,6 +2197,8 @@ if __name__ == '__main__':
                       action="store_true", default=False)
     parser.add_option("", "--nowldist", dest="model_wl_distortions",
                       action="store_false", default=True)
+    parser.add_option("", "--noisemode", dest='sky_noise_mode',
+                      default="synthetic")
 
     (options, cmdline_args) = parser.parse_args()
 
