@@ -35,6 +35,7 @@ def plot_sky_spectrum(wl, flux,
                       sky_spline=None,
                       ext_list=None,
                       skylines=None,
+                      basepoints=None,
                       ):
 
     logger = logging.getLogger("PlotSkySpec")
@@ -133,12 +134,17 @@ def plot_sky_spectrum(wl, flux,
             max_spline_flux = numpy.max(highres_flux)
             y_max = 1.1*max_spline_flux
 
+            if (basepoints is not None):
+                basepoint_values = sky_spline(basepoints)
+                ax.plot(basepoints, basepoint_values,
+                        color='green', marker='o', markersize=4)
+
         ax.set_ylim((0,y_max))
 
         #
         # Draw vertical markers where we found sky-lines
         #
-        if (skyline_list is not None):
+        if (skylines is not None):
             skylines_here_select = (skylines[:,-1] > this_wl_min) & \
                                    (skylines[:,-1] < this_wl_max)
             skylines_here = skylines[skylines_here_select]
