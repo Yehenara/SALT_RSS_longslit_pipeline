@@ -392,11 +392,11 @@ def optimal_sky_subtraction(obj_hdulist,
     allskies = obj_cube #[::skiplength]
     if (lots_of_debug):
         # numpy.savetxt(debug_prefix+"xxx1", allskies)
-        print obj_cube.shape
-        print good_sky_data.shape
+        # print obj_cube.shape
+        # print good_sky_data.shape
 
         _x = obj_cube[good_sky_data]
-        print _x.shape
+        # print _x.shape
         numpy.savetxt(debug_prefix+"xxx1",
                       obj_cube[good_sky_data].reshape((-1, obj_cube.shape[2])))
 
@@ -717,7 +717,8 @@ def optimal_sky_subtraction(obj_hdulist,
         # compute spline fit for each wavelength data point
         # dflux = good_data[:,1] - spline_iter(good_data[:,0])
         logger.debug("computing residuals for outlier rejection")
-        modelflux = spline_iter(obj_cube[:,:,0])
+        modelflux = spline_iter(obj_cube[:,:,0].flatten()).reshape((
+            obj_cube.shape[0],obj_cube.shape[1]))
         dflux = obj_cube[:,:,1] - modelflux
 
         if (lots_of_debug):
@@ -1035,32 +1036,52 @@ if __name__ == "__main__":
 
     # obj_mask = find_source_mask(obj_hdulist['SCI.RAW'].data)
 
-    simple_spec = optimal_sky_subtraction(obj_hdulist, 
-                                          sky_regions=sky_regions,
-                                          N_points=1000,
-                                          iterate=False,
-                                          skiplength=10, 
-                                          compare=True,
-                                          mask_objects=True,
-                                          return_2d=False)
-    numpy.savetxt("simple_spec", simple_spec)
+    # simple_spec = optimal_sky_subtraction(obj_hdulist,
+    #                                       sky_regions=sky_regions,
+    #                                       N_points=1000,
+    #                                       iterate=False,
+    #                                       skiplength=10,
+    #                                       compare=True,
+    #                                       mask_objects=True,
+    #                                       return_2d=False)
+    # numpy.savetxt("simple_spec", simple_spec)
+    #
+    #
+    # skyline_list = wlcal.find_list_of_lines(simple_spec, readnoise=1, avg_width=1)
+    # print skyline_list
+    #
+    # i, ia, im = skyline_intensity.find_skyline_profiles(obj_hdulist, skyline_list)
+    #
+    # #numpy.savetxt("skyline_list", skyline_list)
+    #
 
+    # sky_2d, spline = optimal_sky_subtraction(obj_hdulist,
+    #                                          sky_regions=sky_regions,
+    #                                          N_points=1000,
+    #                                          iterate=False,
+    #                                          skiplength=5,
+    #                                          mask_objects=True,
+    #                                          skyline_flat=ia)
 
-    skyline_list = wlcal.find_list_of_lines(simple_spec, readnoise=1, avg_width=1)
-    print skyline_list
-
-    i, ia, im = skyline_intensity.find_skyline_profiles(obj_hdulist, skyline_list)
-    
-    #numpy.savetxt("skyline_list", skyline_list)
-
-
-    sky_2d, spline = optimal_sky_subtraction(obj_hdulist, 
-                                             sky_regions=sky_regions,
-                                             N_points=1000,
-                                             iterate=False,
-                                             skiplength=5,
-                                             mask_objects=True,
-                                             skyline_flat=ia)
+    flattened_img = obj_hdulist['SCI'].data
+    wls_2d = obj_hdulist['WAVELENGTH'].data
+    sky_2d, spline, extra = optimal_sky_subtraction(
+        obj_hdulist,
+        sky_regions=None,  # sky_regions,
+        N_points=600,
+        iterate=False,
+        skiplength=5,
+        skyline_flat=None, #skyline_flat,  # intensity_profile.reshape((-1,1)),
+        # select_region=numpy.array([[900,950]])
+        # select_region=numpy.array([[600, 640], [660, 700]]),
+        wlmode='model', #options.wlmode,
+        debug_prefix="optskysub__",
+        image_data=flattened_img,
+        obj_wl=wls_2d,
+        debug=True, #options.debug,
+        noise_mode='global', #options.sky_noise_mode,
+    )
+    (x_eff, wl_map, medians, p_scale, p_skew, fm, good_sky_data) = extra
 
     # # Now use the spline interpolator to create a list of strong skylines
     # estimate_slit_intensity_variations(obj_hdulist, spline, sky_2d)
