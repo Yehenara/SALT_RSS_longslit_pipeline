@@ -1154,7 +1154,7 @@ def specred(rawdir, prodir, options,
         numpy.savetxt(sys.stdout, skyline_list, "%9.3f")
         numpy.savetxt("nightsky_lines", skyline_list)
 
-        hdu_appends.append(prep_science.q(skyline_list))
+        hdu_appends.append(prep_science.add_skylines_as_tbhdu(skyline_list))
 
         #
         # Map wavelength distortions
