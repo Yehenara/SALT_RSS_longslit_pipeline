@@ -7,15 +7,20 @@ import numpy
 import scipy
 import scipy.ndimage
 
+import logging
 
 
-def find_obscured_regions(img, threshold=0.35):
+def find_obscured_regions(img, threshold=0.35,
+                          debug=False):
+
+    logger = logging.getLogger("FindObscuredRegions")
 
     #img[~numpy.isfinite(img)] = 0.
 
     #
     # Apply a rough background subtraction
     #
+    logger.debug("Applying rough background/bias/dark subtraction")
     filter_img = img.copy()
     filter_img[~numpy.isfinite(filter_img)] = 0.
     w = 25
@@ -23,24 +28,26 @@ def find_obscured_regions(img, threshold=0.35):
     #i0 = scipy.ndimage.filters.median_filter(numpy.median(img[:w, :], axis=0), size=30, mode='reflect') #.reshape((1,-1))
     i1 = numpy.median(filter_img[-w:, :], axis=0) #.reshape((1,-1))
     i1 = scipy.ndimage.filters.gaussian_filter(i1, sigma=10, mode='reflect')
-    numpy.savetxt("i0", i0.ravel())
-    numpy.savetxt("i1", i1.ravel())
+    if (debug):
+        numpy.savetxt("i0", i0.ravel())
+        numpy.savetxt("i1", i1.ravel())
 
     #bg = numpy.arange(img.shape[0], dtype=numpy.float).reshape((-1,1)) * 0.5*(i1+i0) / img.shape[0]
     bg = numpy.arange(img.shape[0], dtype=numpy.float).reshape((-1,1)) * (i1-i0) / img.shape[0] + i0
-    print img.shape, i0.shape, bg.shape
+    # print img.shape, i0.shape, bg.shape
 
     img = img - bg
-    fits.PrimaryHDU(data=bg).writeto("bg.fits", clobber=True)
-    fits.PrimaryHDU(data=img).writeto("bgsub.fits", clobber=True)
 
-    numpy.savetxt("profile.sum", numpy.sum(img, axis=1))
+    if (debug):
+        fits.PrimaryHDU(data=bg).writeto("bg.fits", clobber=True)
+        fits.PrimaryHDU(data=img).writeto("bgsub.fits", clobber=True)
+        numpy.savetxt("profile.sum", numpy.sum(img, axis=1))
 
     profile = numpy.zeros((img.shape[0]))
     profile_noise = numpy.ones((img.shape[0]))*1e6
     profile_y = numpy.zeros((img.shape[1]))
     profile_noise_y = numpy.ones((img.shape[1]))*1e6
-    print profile.shape, profile_noise.shape
+    # print profile.shape, profile_noise.shape
 
     # for iter in range(3):
     #
@@ -60,14 +67,15 @@ def find_obscured_regions(img, threshold=0.35):
 
     profile = numpy.nanmean(img, axis=1)
     profile_noise = numpy.nanstd(img, axis=1)
-    print profile.shape
+    # print profile.shape
 
     # numpy.savetxt("profile.%d" % (iter+1), profile)
     # numpy.savetxt("profile_noise.%d" % (iter+1), profile_noise)
     # print "iter:", iter, numpy.median(profile), numpy.std(profile), numpy.mean(profile)
 
-    numpy.savetxt("profile", profile)
-    numpy.savetxt("profile_noise", profile_noise)
+    if (debug):
+        numpy.savetxt("profile", profile)
+        numpy.savetxt("profile_noise", profile_noise)
 
     # #
     # # Now fit a linear gradient to the very edges
@@ -95,31 +103,39 @@ def find_obscured_regions(img, threshold=0.35):
 
     # do some profile filtering
     profile2 = scipy.ndimage.filters.median_filter(profile, size=20)
-    numpy.savetxt("profile.clean", profile2)
+    if (debug):
+            numpy.savetxt("profile.clean", profile2)
 
     filter_profile = numpy.array(profile2)
     for iter in range(3):
         good = numpy.isfinite(filter_profile)
         stats = numpy.percentile(filter_profile[good], [16,50,84])
-        print stats, numpy.nanmean(filter_profile)
+        # print stats, numpy.nanmean(filter_profile)
 
         _med = stats[1]
         _sigma = 0.5*(stats[2] - stats[0])
         filter_profile[ filter_profile > _med+2*_sigma] = numpy.NaN
         filter_profile[ filter_profile < _med-2*_sigma] = numpy.NaN
 
-        numpy.savetxt("profile.clean.%d" % (iter+1), filter_profile)
+        if (debug):
+            numpy.savetxt("profile.clean.%d" % (iter+1), filter_profile)
 
         # print "median flux:", stats[1]
 
     bad_columns = profile2 < threshold*_med
 
     profile2[bad_columns] = numpy.NaN
-    numpy.savetxt("profile.cleaned", profile2)
+    if (debug):
+        numpy.savetxt("profile.cleaned", profile2)
 
     img[bad_columns, :] = numpy.NaN
-    fits.PrimaryHDU(data=img).writeto("bgsub+clean.fits", clobber=True)
+    if (debug):
+        fits.PrimaryHDU(data=img).writeto("bgsub+clean.fits",
+                                          clobber=True)
 
+    logger.debug("Found %d obscured/empty/dead rows" % (
+        numpy.sum(bad_columns))
+    )
     return bad_columns
 
 
