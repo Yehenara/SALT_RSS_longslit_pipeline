@@ -746,7 +746,10 @@ def optimal_sky_subtraction(obj_hdulist,
             good_data[:,0],
             k_wl, k=3)
 
-        logger.info("Computing spline ...")
+        logger.info("Computing spline, measuring noise and rejecting "
+                    "outliers ...")
+
+        logger.debug("Computing spline ...")
         try:
             # spline_iter = scipy.interpolate.LSQUnivariateSpline(
             #     x=good_data[:,0], #allskies[:,0],#[good_point],

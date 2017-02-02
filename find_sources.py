@@ -171,9 +171,11 @@ def continuum_slit_profile(hdulist=None, data_ext='SKYSUB.OPT', sky_ext='SKYSUB.
 def identify_sources(profile, profile_var=None,
                      min_peak_s2n=4,
                      psf_size=3,
-                     pre_median_width=3):
+                     pre_median_width=3,
+                     debug=False,):
 
     logger = logging.getLogger("IdentifySources")
+    logger.info("Searching for sources and source-extents")
 
     #
     # Smooth profile to get rid of noise spikes
@@ -193,7 +195,8 @@ def identify_sources(profile, profile_var=None,
         mode='reflect',
         cval=0.0,
         origin=0)
-    numpy.savetxt("prof.premed", pre_med)
+    if (debug):
+        numpy.savetxt("prof.premed", pre_med)
 
     smoothed = scipy.ndimage.filters.gaussian_filter(pre_med.reshape((-1,1)),
                                                      (gauss_width,0),
@@ -203,6 +206,7 @@ def identify_sources(profile, profile_var=None,
     #
     # Approximate a continuum by applying a wider median filter
     #
+    logger.debug("Approximating continuum")
     cont = scipy.ndimage.filters.median_filter(
         input=pre_med,
         size=(175),
@@ -211,9 +215,10 @@ def identify_sources(profile, profile_var=None,
         mode='reflect', 
         cval=0.0, 
         origin=0)
-    
-    numpy.savetxt("prof.gauss1", smoothed)
-    numpy.savetxt("prof.cont", cont)
+
+    if (debug):
+        numpy.savetxt("prof.gauss1", smoothed)
+        numpy.savetxt("prof.cont", cont)
 
     signal = pre_med - cont
     smooth_signal = (smoothed[:,0] - cont)
@@ -222,25 +227,30 @@ def identify_sources(profile, profile_var=None,
     # Get a noise-estimate by iteratively rejecting strong features
     #
     valid = numpy.isfinite(signal)
+    logger.debug("Estimating noise iteratively")
     for iter in range(3):
         stats = scipy.stats.scoreatpercentile(signal[valid], [16,50,84],
                                               limit=[-1e9,1e9])
         one_sigma = (stats[2] - stats[0]) / 2.
         median = stats[1]
-        print stats
+        # print stats
+        logger.debug("Iteration %d: %f +/- %f" % (
+            iter+1, median, one_sigma,
+        ))
         #print iter, stats
         # mask all pixels outside the 3-sigma range as bad
         bad = (signal > (median + 3*one_sigma)) | (signal < (median - 3*one_sigma))
         signal[bad] = numpy.NaN
         valid[bad] = False
-        numpy.savetxt("signal.%d" % (iter+1), signal)
+        if (debug):
+            numpy.savetxt("signal.%d" % (iter+1), signal)
 
     #
     # Now we have the noise level, so we can determine where true (or truish) 
     # sources are
     #
     noise_level = numpy.var(signal[numpy.isfinite(signal)])
-    logger.info("Noise level: %f / %f" % (one_sigma, noise_level))
+    logger.info("Final noise level: %f / %f" % (one_sigma, noise_level))
     noise_level = one_sigma
 
 
@@ -253,19 +263,21 @@ def identify_sources(profile, profile_var=None,
     d1 = padded[1:-1] - padded[0:-2]
     d2 = padded[1:-1] - padded[2:]
     slope_product = d1 * d2
-    numpy.savetxt("prof.slopeprod", slope_product)
+    if (debug):
+        numpy.savetxt("prof.slopeprod", slope_product)
 
     s2n = smooth_signal / noise_level
     # select raw peak catalog as all peaks with s/n > 3
-    print slope_product.shape, slope_input.shape
+    #print slope_product.shape, slope_input.shape
     valid_peak = (slope_product > 0) & (s2n > min_peak_s2n) & (d1 > 0)
     peak_positions = numpy.arange(slope_input.shape[0])[valid_peak]
-    numpy.savetxt("prof.peaks2",
+    if (debug):
+        numpy.savetxt("prof.peaks2",
                   numpy.array([peak_positions,
                                slope_input[valid_peak],
                                s2n[valid_peak]
                                ]).T
-    )
+        )
 
     # peaks = scipy.signal.find_peaks_cwt(
     #     vector=(smoothed[:,0]-cont),
@@ -335,7 +347,10 @@ def identify_sources(profile, profile_var=None,
         source_stats[si, 2:4] = [left, right]
 
     #numpy.savetxt(sys.stdout, source_stats, "%.1f")
-    numpy.savetxt("sources", source_stats)
+    if (debug):
+        numpy.savetxt("sources", source_stats)
+
+    logger.info("Found %d sources" % (source_stats.shape[0]))
 
     return source_stats
 

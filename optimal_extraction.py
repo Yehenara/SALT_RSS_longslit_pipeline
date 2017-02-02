@@ -29,7 +29,7 @@ class OptimalWeight(object):
         self.y_center = numpy.arange(self.data.shape[0], dtype=numpy.float) * self.y_step + 0.5*self.y_step + self.y_min
         self.wl_center = numpy.arange(self.data.shape[1], dtype=numpy.float) * self.wl_step + 0.5*self.wl_step + self.wl_min
 
-        print "Y/wl:", self.y_center.shape, self.wl_center.shape
+        # print "Y/wl:", self.y_center.shape, self.wl_center.shape
 
         self.profile1d = numpy.mean(self.data, axis=1)
 
@@ -39,7 +39,7 @@ class OptimalWeight(object):
             z=self.data,
             kx=1, ky=1,
         )
-        print self.weight_interpol
+        # print self.weight_interpol
 
     def get_weight(self, wl, y, mode='interpolate'):
         #print wl, y
