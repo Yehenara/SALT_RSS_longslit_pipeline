@@ -84,26 +84,29 @@ class OptimalWeight(object):
 
 
 def generate_source_profile(data, variance, wavelength, trace_offset,
-                            position, width=50):
+                            position, width=50, debug=False):
+
+    logger = logging.getLogger("GenerateSrcProfile")
 
     # get coordinates
     y,x = numpy.indices(data.shape, dtype=numpy.float)
 
     pos_x, pos_y = position[0], position[1]
 
-    print y.shape
-    print trace_offset.shape
+    #print y.shape
+    #print trace_offset.shape
 
     traceoffset2d = numpy.repeat(trace_offset.reshape((1,-1)), data.shape[0], axis=0)
-    print traceoffset2d.shape
+    #print traceoffset2d.shape
 
     dy = y - pos_y - traceoffset2d
-    fits.PrimaryHDU(data=dy).writeto("optex_dy.fits", clobber=True)
+    if (debug):
+        fits.PrimaryHDU(data=dy).writeto("optex_dy.fits", clobber=True)
 
     wl_pad = numpy.pad(wavelength, ((0,0),(1,1)), mode='edge')
     wl_start = 0.5*(wl_pad[:, 0:-2] + wl_pad[:, 1:-1])
     wl_end = 0.5*(wl_pad[:, 1:-1] + wl_pad[:, 2:])
-    print "wl start/end", wl_start.shape, wl_end.shape
+    #print "wl start/end", wl_start.shape, wl_end.shape
 
     in_range = numpy.fabs(dy) < width+0.5
     src_data = data[in_range]
@@ -122,19 +125,23 @@ def generate_source_profile(data, variance, wavelength, trace_offset,
     combined[:,4] = src_y
     combined[:,5] = src_wl1
     combined[:,6] = src_wl2
-    numpy.savetxt("optex.data", combined)
+    if (debug):
+        numpy.savetxt("optex.data", combined)
 
     return combined
 
 
-def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2d=None):
+def integrate_source_profile(width=25, supersample=10, wl_resolution=5,
+                             profile2d=None,
+                             debug=False):
 
+    logger = logging.getLogger("IntegrateSrcProfile")
 
     if (profile2d is None):
-        print "no data given, nothing to do"
+        logger.error("no data given, nothing to do")
         return None
 
-    print "running integrate_source_profile"
+    logger.debug("running integrate_source_profile")
 
     #
     # now drizzle the data into the output container
@@ -173,9 +180,9 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     # average dispersion
     #
     avg_dispersion = numpy.mean(profile2d[:, 6] - profile2d[:, 5])
-    print "average dispersion:", avg_dispersion
+    logger.debug("average dispersion: %f A/px" % (avg_dispersion))
     spec_resolution = wl_resolution if wl_resolution > 0 else avg_dispersion * math.fabs(wl_resolution)
-    print "using spectral resolution of", spec_resolution
+    logger.debug("using spectral resolution of %f" %  (spec_resolution))
 
     #
     # Now drizzle the data into the 2-d wavelength/y data buffer
@@ -183,10 +190,10 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     wl_min = numpy.min(profile2d[:,5])
     wl_max = numpy.max(profile2d[:,6])
     n_spec_bins = int(math.ceil((wl_max - wl_min) / spec_resolution))
-    print "using a total of %d spectral bins" % (n_spec_bins)
+    logger.debug("using a total of %d spectral bins" % (n_spec_bins))
 
     out_drizzle = numpy.zeros((n_samples, n_spec_bins))
-    print out_drizzle.shape
+    #print out_drizzle.shape
 
     wl_start = numpy.arange(n_spec_bins, dtype=numpy.float) * spec_resolution + wl_min
     wl_end = wl_start + spec_resolution
@@ -287,29 +294,31 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     #
     # truncate negative pixels to 0
     #
-    fits.PrimaryHDU(data=out_drizzle).writeto("out_drizzle0.fits", clobber=True)
-    #out_drizzle[out_drizzle<0] = 0.
+    if (debug):
+        fits.PrimaryHDU(data=out_drizzle).writeto("out_drizzle0.fits", clobber=True)
+        #out_drizzle[out_drizzle<0] = 0.
 
-    y,x = numpy.indices(out_drizzle.shape)
-    combined = numpy.empty((x.shape[0]*x.shape[1], 3))
-    combined[:,0] = x.flatten()
-    combined[:,1] = y.flatten()
-    combined[:,2] = out_drizzle.flatten()
-    numpy.savetxt("drizzled", combined)
-    numpy.savetxt("drizzled2", out_drizzle)
-    fits.PrimaryHDU(data=out_drizzle).writeto("out_drizzle.fits", clobber=True)
+        y,x = numpy.indices(out_drizzle.shape)
+        combined = numpy.empty((x.shape[0]*x.shape[1], 3))
+        combined[:,0] = x.flatten()
+        combined[:,1] = y.flatten()
+        combined[:,2] = out_drizzle.flatten()
+        numpy.savetxt("drizzled", combined)
+        numpy.savetxt("drizzled2", out_drizzle)
+        fits.PrimaryHDU(data=out_drizzle).writeto("out_drizzle.fits", clobber=True)
 
     #
     # Now integrate the drizzle spectrum along the slit to compute the relative contribution of each pixel.
     #
     spec1d = numpy.sum(out_drizzle, axis=0)
-    print out_drizzle.shape, spec1d.shape
-    numpy.savetxt("spec1d", numpy.append(wl_start.reshape((-1,1)), spec1d.reshape((-1,1)), axis=1))
-    numpy.savetxt("optprofile1d", numpy.sum(out_drizzle, axis=1))
-    numpy.savetxt("optprofile1d.mean", numpy.mean(out_drizzle, axis=1))
+    if (debug):
+        print out_drizzle.shape, spec1d.shape
+        numpy.savetxt("spec1d", numpy.append(wl_start.reshape((-1,1)), spec1d.reshape((-1,1)), axis=1))
+        numpy.savetxt("optprofile1d", numpy.sum(out_drizzle, axis=1))
+        numpy.savetxt("optprofile1d.mean", numpy.mean(out_drizzle, axis=1))
 
     median_flux = numpy.median(spec1d)
-    print "median flux level:", median_flux
+    logger.debug("median flux level: %f" % (median_flux))
     bad_data = spec1d < 0.05*median_flux
     spec1d[bad_data] = numpy.NaN
 
@@ -321,28 +330,31 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5, profile2
     global_profile = numpy.sum(out_drizzle, axis=1)
     global_profile /= numpy.sum(global_profile)
     global_profile_2d = numpy.repeat(global_profile.reshape((-1, 1)), spec1d.shape[0], axis = 1)
-    print "global profile:", global_profile_2d.shape
+    # print "global profile:", global_profile_2d.shape
     drizzled_weight[no_data] = global_profile_2d[no_data]
 
-    combined[:,2] = drizzled_weight.flatten()
-    numpy.savetxt("drizzled.norm", combined)
-    fits.PrimaryHDU(data=drizzled_weight).writeto("drizzled-weight.fits", clobber=True)
-    #combined[:,2] = (drizzled_weight / numpy.sum(drizzled_weight, axis=0).reshape((1,-1))).flatten()
-    #numpy.savetxt("drizzled.normsum", combined)
+    if (debug):
+        combined[:,2] = drizzled_weight.flatten()
+        numpy.savetxt("drizzled.norm", combined)
+        fits.PrimaryHDU(data=drizzled_weight).writeto("drizzled-weight.fits", clobber=True)
+        #combined[:,2] = (drizzled_weight / numpy.sum(drizzled_weight, axis=0).reshape((1,-1))).flatten()
+        #numpy.savetxt("drizzled.normsum", combined)
 
-    numpy.savetxt("drizzled.1d", numpy.mean(drizzled_weight, axis=1))
+        numpy.savetxt("drizzled.1d", numpy.mean(drizzled_weight, axis=1))
 
     #
     # Finally, limit all negative pixels to 0
     #
     drizzled_weight[drizzled_weight<0] = 0.
-    numpy.savetxt("drizzled.1dv2", numpy.mean(drizzled_weight, axis=1))
+    if (debug):
+        numpy.savetxt("drizzled.1dv2",
+                      numpy.mean(drizzled_weight, axis=1))
 
     #
     # Now we have a full 2-d distribution of extraction weights as fct. of dy and wavelength
     #
     #drizzled_weight[drizzled_weight<0] = 0
-    print "computing final 2-d interpolator"
+    logger.debug("computing final 2-d interpolator")
     opt_weight = OptimalWeight(
         wl_min=wl_min, wl_step=spec_resolution,
         y_min=y_min, y_step=y_width,
@@ -411,7 +423,7 @@ def optimal_extract(img_data, wl_data, variance_data,
 
     dy0 = trace_offset[reference_x]
     corrected_y = y_raw + 1.0 - trace_offset + dy0 # add 1 pixel for FITS conformity
-    logger.info("Trace offset at reference x=+%d: %f" % (reference_x, dy0))
+    logger.debug("Trace offset at reference x=+%d: %f" % (reference_x, dy0))
     if (debug_filebase is not None):
         numpy.savetxt(debug_filebase+"corrected_y", corrected_y.ravel())
 
@@ -454,7 +466,7 @@ def optimal_extract(img_data, wl_data, variance_data,
         spec_wl_from = wl_from[in_y_range]
         spec_wl_to = wl_to[in_y_range]
         spec_wl_width = wl_width[in_y_range]
-        logger.info("total # of input pixels: %d" % (spec_img_data.size))
+        logger.debug("total # of input pixels: %d" % (spec_img_data.size))
 
         spec_y_data = corrected_y[in_y_range]
         if (debug_filebase is not None):
@@ -467,7 +479,8 @@ def optimal_extract(img_data, wl_data, variance_data,
 
         weight_data = numpy.ones_like(img_data, dtype=numpy.float)
         if (optimal_weight is not None):
-            logger.info("Computing optimal extraction weights for all input pixels")
+            logger.debug("Computing optimal extraction weights for all input "
+                     "pixels")
             weight_data = optimal_weight.get_weight(
                 wl=spec_wl_data, y=spec_y_data)
 
@@ -479,7 +492,8 @@ def optimal_extract(img_data, wl_data, variance_data,
                 numpy.savetxt(debug_filebase+"weight_data", c)
 
             optimal_normalization = optimal_weight.get_normalization(y1,y2)
-            logger.info("Using relative normalization of %f" % (optimal_normalization))
+            logger.debug("Using relative normalization of %f" % (
+                optimal_normalization))
         else:
             optimal_normalization = 1.0
         # print img_data.shape, wl_data.shape

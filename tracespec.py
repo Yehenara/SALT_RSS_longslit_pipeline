@@ -8,7 +8,8 @@ import pysalt
 import traceline
 import prep_science
 
-def compute_spectrum_trace(data, start_x, start_y, xbin=1):
+def compute_spectrum_trace(data, start_x, start_y, xbin=1,
+                        debug=False):
 
     # transpose - we can only trace up/down, not left/right
     # data = data.T
@@ -56,9 +57,11 @@ def compute_spectrum_trace(data, start_x, start_y, xbin=1):
 
             # print x, weighted_y
 
-            numpy.savetxt("slit_%04d" % (x),
-                          numpy.append(pos_y.reshape((-1, 1)),
-                                       slit.reshape((-1, 1)), axis=1))
+            if (debug):
+                numpy.savetxt("slit_%04d" % (x),
+                      numpy.append(pos_y.reshape((-1, 1)),
+                                   slit.reshape((-1, 1)), axis=1)
+                )
 
             positions[x] = weighted_y
 
@@ -82,7 +85,8 @@ def compute_spectrum_trace(data, start_x, start_y, xbin=1):
     #numpy.savetxt("tracespec", positions)
     #numpy.savetxt("tracespec.smooth", smoothtrace)
 
-    numpy.savetxt("tracespec", combined)
+    if (debug):
+        numpy.savetxt("tracespec", combined)
 
     return combined
 
