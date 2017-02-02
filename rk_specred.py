@@ -1028,7 +1028,7 @@ def specred(rawdir, prodir, options,
         #
         img_raw = img_data.copy()
         profile_raw_1d = numpy.mean(img_raw, axis=1)
-        print profile_raw_1d
+        # print profile_raw_1d
 
         #
         # Use ARC to trace lines and compute a 2-D wavelength solution
@@ -1288,7 +1288,7 @@ def specred(rawdir, prodir, options,
             flux=flattened_img,
             good_sky_data=good_sky_data,
             bad_rows=bad_rows,
-            output_filebase=fb[:-5]+".skyspec",
+            output_filebase=output_basename+".skyspec",
             sky_spline=spline,
             ext_list=['png'],
         )
