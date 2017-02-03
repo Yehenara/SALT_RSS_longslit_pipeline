@@ -592,20 +592,34 @@ def optimal_extract(img_data, wl_data, variance_data,
             opt_weights_drizzled = numpy.ones_like(drizzled_flux)
 
 
-        spec_1d_sum = numpy.nansum(drizzled_flux, axis=1)
 
+        spec_1d_sum = numpy.nansum(drizzled_flux, axis=1)
         _spec_1d_weighted = \
             numpy.nansum((drizzled_flux * opt_weights_drizzled),
                          axis=1)
         _weight_times_npix = (opt_weights_drizzled * drizzled_npix)
         _spec_1d_weights = numpy.nansum(_weight_times_npix, axis=1) / \
                            numpy.nansum(drizzled_npix, axis=1)
-        # spec_1d_optimal = numpy.nansum(
-        #     (drizzled_flux * opt_weights_drizzled), axis=1) / numpy.sum(
-        #     opt_weights_drizzled, axis=1)
         spec_1d_optimal = _spec_1d_weighted / _spec_1d_weights
         # print spec_1d_optimal.shape
 
+        #
+        # Repeat the same arithmetic for the variance data
+        #
+        # TODO: CHECK THAT THE SCALING OF THE VARIANCE DATA IS VALID !!!
+        #
+        var_1d_sum = numpy.nansum(drizzled_var, axis=1)
+        _var_1d_weighted = \
+            numpy.nansum((drizzled_var * opt_weights_drizzled),
+                         axis=1)
+        var_1d_optimal = _var_1d_weighted / _spec_1d_weights
+
+        #     numpy.nansum(
+        #     (drizzled_var * opt_weights_drizzled), axis=1) / numpy.sum(
+        #     opt_weights_drizzled, axis=1)
+        # var_1d_sum = numpy.nansum(drizzled_var, axis=1)
+        # var_scaling = numpy.nanmedian(var_1d_sum / var_1d_optimal)
+        # var_1d_final = var_1d_optimal * var_scaling
 
 
         #
@@ -615,9 +629,10 @@ def optimal_extract(img_data, wl_data, variance_data,
         flux_scaling = numpy.nanmedian(spec_1d_sum / spec_1d_optimal)
         logger.info("Scaling factor from optimally weighted average to "
                     "simple sum: %f" % (flux_scaling))
-
-        # print type(flux_scaling)
         spec_1d_final = spec_1d_optimal * flux_scaling
+
+        var_scaling = numpy.nanmedian(var_1d_sum / var_1d_optimal)
+        var_1d_final = var_1d_optimal * var_scaling
 
 
         if (debug_filebase is not None):
@@ -640,17 +655,6 @@ def optimal_extract(img_data, wl_data, variance_data,
                                                                         y2), \
                            spec_1d_final)
 
-        #
-        # Repeat the same arithmetic for the variance data
-        #
-        # TODO: CHECK THAT THE SCALING OF THE VARIANCE DATA IS VALID !!!
-        #
-        var_1d_optimal = numpy.nansum(
-            (drizzled_var * opt_weights_drizzled), axis=1) / numpy.sum(
-            opt_weights_drizzled, axis=1)
-        var_1d_sum = numpy.nansum(drizzled_var, axis=1)
-        var_scaling = numpy.nanmedian(var_1d_sum / var_1d_optimal)
-        var_1d_final = var_1d_optimal * var_scaling
 
         # x = numpy.empty((out_flux.shape[0],5))
         # x[:,0] = numpy.arange(out_flux.shape[0], dtype=numpy.float)*dwl+wl0
