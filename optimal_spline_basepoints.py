@@ -678,14 +678,14 @@ def optimal_sky_subtraction(obj_hdulist,
     wl_sort = numpy.argsort(obj_wl.flatten())
     wl_unsort = numpy.argsort(wl_sort)
 
-    print wl_sort.shape, wl_unsort.shape
+    print "wort/unsort:", wl_sort.shape, wl_unsort.shape
 
     obj_cube_sorted = obj_cube.reshape((-1, obj_cube.shape[2]))[wl_sort]
     good_sky_data_sorted = good_sky_data.reshape((-1,1))[wl_sort]
 
-    print obj_cube_sorted.shape, good_sky_data_sorted.shape
+    print "obj-cube-sorted:", obj_cube_sorted.shape, good_sky_data_sorted.shape
 
-    for iteration in range(1): #n_iterations):
+    for iteration in range(n_iterations):
 
         logger.info("Starting sky-spectrum iteration %d of %d" % (
             iteration+1, n_iterations)
@@ -709,12 +709,12 @@ def optimal_sky_subtraction(obj_hdulist,
         noiseblocksize = 250
         # print good_data.shape
 
-        os._exit(-2)
+        # os._exit(-2)
 
         obj_cube_1d = obj_cube_sorted
         # obj_cube.copy().reshape((-1, obj_cube.shape[2]))[wl_sort]
         good_sky_data_1d = good_sky_data_sorted # good_sky_data.reshape((-1,1))[wl_sort]
-
+        print
         n_noise_blocks = math.ceil(obj_cube_1d.shape[0] / float(noiseblocksize))
         n_to_add = n_noise_blocks*noiseblocksize-obj_cube_1d.shape[0]
         n_add_front = int(n_to_add/2)
@@ -732,7 +732,7 @@ def optimal_sky_subtraction(obj_hdulist,
             pad_width=pad_width,
             mode='constant', constant_values=(False,)
         )
-        print prep4noise.shape, prep4noise_flag.shape
+        print "prep4noise:", prep4noise.shape, prep4noise_flag.shape
         prep4noise_reshape = numpy.reshape(prep4noise,
             (-1, noiseblocksize, obj_cube_1d.shape[1]))
         # print prep4noise.shape, prep4noise_reshape.shape
@@ -760,15 +760,16 @@ def optimal_sky_subtraction(obj_hdulist,
                         _good_max.reshape(shape_1d)) | \
                        (prep4noise_reshape[:,:,1]
                         < _good_min.reshape(shape_1d))
-            print bad_data.shape
-            prep4noise_reshape[bad_data] = numpy.NaN
+            print "bad data:", i, bad_data.shape
+            prep4noise_reshape[bad_data,1] = numpy.NaN
             prep4noise_reshape_flag[bad_data] = False
             # print noise_stats.shape
             if (not debug):
                 logger.debug("done computing noise spectrum")
             else:
                 logger.debug("done computing noise spectrum, saving debug")
-                numpy.savetxt("noisespec_%d.%d" % (iteration+1,i+1),
+                debug_fn = "noisespec_%d.%d" % (iteration+1,i+1)
+                numpy.savetxt(debug_fn,
                               numpy.array([binned_wl,
                                            binned_one_sigma,
                                            binned_median,
@@ -777,22 +778,29 @@ def optimal_sky_subtraction(obj_hdulist,
                 #               prep4noise_reshape.reshape(
                 #                   (-1, prep4noise_reshape.shape[2]))
                 #               )
-                logger.debug("done writing debug")
+                logger.info("done writing debug %s" % (debug_fn))
 
         #
         # Re-convert the 3-d array to 2-d
         #
         unprep = prep4noise_reshape.reshape(
             (-1, prep4noise_reshape.shape[2]))[
-                 n_add_front:-n_add_back][wl_unsort].reshape(obj_cube.shape)
-        unprep_mask = prep4noise_reshape_flag.reshape(
-            (-1, prep4noise_reshape_flag.shape[2]))[
-                 n_add_front:-n_add_back][wl_unsort].reshape(
-            good_sky_data.shape)
-        print unprep, unprep_mask, obj_cube.shape, good_sky_data.shape
-        good_sky_data = unprep_mask
-        fits.PrimaryHDU(data=good_sky_data.astype(numpy.int)).writeto(
-            "mask_%d.fits" % (iteration), clobber=True)
+                 n_add_front:-n_add_back] #[wl_unsort].reshape(obj_cube.shape)
+        unprep_mask = prep4noise_reshape_flag.reshape((-1))[n_add_front:-n_add_back] #[wl_unsort].reshape(
+            #good_sky_data.shape)
+        print unprep.shape, unprep_mask.shape, obj_cube.shape, good_sky_data.shape
+
+        obj_cube_1d = unprep
+        good_sky_data_sorted = unprep_mask
+        fits.PrimaryHDU(
+            data=good_sky_data_sorted[wl_unsort].astype(numpy.int)).writeto(
+            "unprepped_mask.fits", clobber=True
+        )
+        print "Un-prepped:", obj_cube_1d.shape, good_sky_data_sorted.shape
+
+
+        #fits.PrimaryHDU(data=good_sky_data.astype(numpy.int)).writeto(
+        #    "mask_%d.fits" % (iteration), clobber=True)
 
         if (not strong_gradient_basepoints_added):
             logger.info("Searching for the edges of sky-lines")
@@ -808,6 +816,14 @@ def optimal_sky_subtraction(obj_hdulist,
             k_wl = numpy.sort(numpy.append(k_wl, basepoints_to_add))
             strong_gradient_basepoints_added = True
 
+        #
+        # Select only data points not previously masked out
+        #
+        good_data = obj_cube_sorted[good_sky_data_sorted]
+        logger.debug("Dumping debug output")
+        numpy.savetxt("xxx.allskies", obj_cube_sorted)
+        numpy.savetxt("xxx.allskies.good", good_data)
+        print good_data.shape
 
 
         logger.debug("Ensuring Schoenberg/Whitney is satisfied")
@@ -819,7 +835,6 @@ def optimal_sky_subtraction(obj_hdulist,
                     "outliers ...")
 
         logger.info("Computing spline ...")
-        good_data = obj_cube[good_sky_data]
         try:
             # spline_iter = scipy.interpolate.LSQUnivariateSpline(
             #     x=good_data[:,0], #allskies[:,0],#[good_point],
@@ -829,8 +844,7 @@ def optimal_sky_subtraction(obj_hdulist,
             #     bbox=[wl_min, wl_max],
             #     k=3, # use a cubic spline fit
             # )
-            print good_data.shape
-            numpy.savetxt("xxx.allskies", good_data)
+            print obj_cube_sorted.shape
             spline_iter = scipy.interpolate.LSQUnivariateSpline(
                 x=good_data[:,0], #allskies[:,0],# #[good_point],
                 y=good_data[:,1], #allskies[:,1],
@@ -880,9 +894,8 @@ def optimal_sky_subtraction(obj_hdulist,
         # compute spline fit for each wavelength data point
         # dflux = good_data[:,1] - spline_iter(good_data[:,0])
         logger.debug("computing residuals for outlier rejection")
-        modelflux = spline_iter(obj_cube[:,:,0].flatten()).reshape((
-            obj_cube.shape[0],obj_cube.shape[1]))
-        dflux = obj_cube[:,:,1] - modelflux
+        modelflux = spline_iter(obj_cube_sorted[:,0])
+        dflux = obj_cube_sorted[:,1] - modelflux
 
         if (lots_of_debug):
             logger.debug("writing dflux.fits")
@@ -893,7 +906,7 @@ def optimal_sky_subtraction(obj_hdulist,
             logger.debug("dflux shape: %s" % (str(dflux.shape)))
 
         # there's only 1 iteration, no need to prep for #2
-        break
+        # break
 
 
         # print dflux
@@ -903,11 +916,12 @@ def optimal_sky_subtraction(obj_hdulist,
         #           vicinity of this basepoint. This is what determined outlier 
         #           or not, and NOT the uncertainty in a given pixel
         #
+        keep_iterating = True
 
         if (noise_mode == 'local1'):
 
             local_noise = localnoise.calculate_local_noise(
-                data=dflux[good_sky_data],
+                data=dflux[good_sky_data_sorted],
                 basepoints=k_iter_good,
                 select=good_data[:,0],
                 dumpdebug=True
@@ -992,7 +1006,7 @@ def optimal_sky_subtraction(obj_hdulist,
             not_outlier = numpy.fabs(dflux) < 3*one_sigma
             outlier = numpy.fabs(dflux) > 3*one_sigma
 
-        else:
+        elif (noise_mode == "global+"):
 
             #
             # This is a variation of the global noise model
@@ -1017,11 +1031,16 @@ def optimal_sky_subtraction(obj_hdulist,
             #outlier = numpy.fabs(dflux) > 3 * modelnoise
             outlier = (dflux > 3 * modelnoise) | (dflux < -5*modelnoise)
 
+        else:
+
+            outlier = numpy.zeros((good_sky_data_sorted.shape), dtype=numpy.bool)
+            keep_iterating = False
+
         #
         # Exclude all outliers from contributing to the next refinement
         # iteration
         #
-        good_sky_data[outlier] = False
+        good_sky_data_sorted[outlier] = False
 
         #good_data = good_data[not_outlier]
         if (lots_of_debug):
@@ -1065,6 +1084,9 @@ def optimal_sky_subtraction(obj_hdulist,
         logger.info("Done with iteration %d (%d pixels left)" % (
             iteration+1, numpy.sum(good_sky_data)))
 
+        if (not keep_iterating):
+            break
+
     logger.info("Done with all iterative sky-spline fitting (using local noise to reject outliers)")
     # _x = fits.ImageHDU(data=obj_hdulist['SCI.RAW'].data, 
     #                      header=obj_hdulist['SCI.RAW'].header)
@@ -1091,22 +1113,32 @@ def optimal_sky_subtraction(obj_hdulist,
     #
     sky2d = None
 
+    #
+    # Convert the sorted mask array back into the original unsorted shape
+    #
     logger.info("Computing full-resolution sky spectrum from sky-spline")
-    # compute high-res sky-spectrum
-    wl_highres = numpy.linspace(allskies[0,0], allskies[-1,0], 100000)
-    sky_highres = spline_iter(wl_highres)
-    numpy.savetxt(debug_prefix+"sky_highres", numpy.append(wl_highres.reshape((-1,1)),
-                                              sky_highres.reshape((-1,1)), axis=1))
+    good_sky_data = good_sky_data_sorted[wl_unsort].reshape((obj_data.shape))
 
-    allskies_synth = spline_iter(allskies[:,0])
-    ascombined = numpy.zeros((allskies_synth.shape[0],4))
-    ascombined[:,0] = allskies[:,0]
-    ascombined[:,1] = allskies[:,1]
-    ascombined[:,2] = allskies_synth[:]
-    ascombined[:,3] = allskies[:,1] - allskies_synth[:]
-    numpy.savetxt(debug_prefix+"skysub_all", ascombined)
+    if (debug):
+        # compute high-res sky-spectrum
+        wl_highres = numpy.linspace(allskies[0,0], allskies[-1,0], 100000)
+        sky_highres = spline_iter(wl_highres)
+        numpy.savetxt(debug_prefix+"sky_highres", numpy.append(wl_highres.reshape((-1,1)),
+                                                  sky_highres.reshape((-1,1)), axis=1))
 
-    if (not spline_iter == None):
+        print "good-sky/obj-cube:", good_sky_data.shape, obj_cube.shape
+        allskies = obj_cube[good_sky_data]
+        allskies_synth = spline_iter(allskies[:,0])
+        ascombined = numpy.zeros((allskies_synth.shape[0],4))
+        ascombined[:,0] = allskies[:,0]
+        ascombined[:,1] = allskies[:,1]
+        ascombined[:,2] = allskies_synth[:]
+        ascombined[:,3] = allskies[:,1] - allskies_synth[:]
+        numpy.savetxt(debug_prefix+"skysub_all", ascombined)
+
+    if (spline_iter is not None):
+        logger.info("Computing full-res sky model")
+
         padded = numpy.empty((obj_wl.shape[0], obj_wl.shape[1]+2))
         padded[:, 1:-1] = obj_wl[:,:]
         padded[:,0] = obj_wl[:,0]
@@ -1120,7 +1152,10 @@ def optimal_sky_subtraction(obj_hdulist,
         #
         # therefore we need to do the integration for each pixel by hand
         t0 = time.time()
-        sky2d = numpy.array([spline_iter.integral(a,b) for a,b in zip(from_wl.ravel(),to_wl.ravel())]).reshape(obj_wl.shape)
+        sky2d = numpy.array([
+            spline_iter.integral(a,b) for a,b in zip(
+                from_wl.ravel(),to_wl.ravel())]
+            ).reshape(obj_wl.shape)
 
         #
         # Important !!!
