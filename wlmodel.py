@@ -59,7 +59,7 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     #
     # Load spectrograph parameters
     #
-    spec=numpy.loadtxt(datadir+"spec.txt",usecols=(1,))
+    spec=numpy.loadtxt(datadir+"/spec.txt",usecols=(1,))
     grating_rotation_home_error = spec[0]
 
     Grat0,Home0,ArtErr,T2Con,T3Con=spec[0:5]
