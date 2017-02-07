@@ -582,6 +582,8 @@ def specred(rawdir, prodir, options,
         obstype = None
         if ('OBSTYPE' in hdulist[0].header):
             obstype = hdulist[0].header['OBSTYPE']
+            if (obstype not in ['OBJECT', 'ARC', 'FLAT']):
+                obstype = None
         if (obstype is None or (obstype.strip() == "" and 'CCDTYPE' in hdulist[0].header)):
             obstype = hdulist[0].header['CCDTYPE']
         if (obstype in obslog):

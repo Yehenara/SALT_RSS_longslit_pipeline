@@ -10,7 +10,7 @@ import pysalt
 import logging
 from optparse import OptionParser
 
-datadir="/work/salt/sandbox_official/polSALT/polsalt/data/"
+datadir=os.path.dirname(os.path.realpath(__file__))
 
 # based on http://www.sal.wisc.edu/PFIS/docs/rss-vis/archive/protected/pfis/3170/3170AM0010_Spectrograph_Model_Draft_2.pdf
 # and https://github.com/saltastro/SALTsandbox/blob/master/polSALT/polsalt/specpolmap.py
@@ -59,15 +59,16 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     #
     # Load spectrograph parameters
     #
-    spec=numpy.loadtxt(datadir+"spec.txt",usecols=(1,))
+    spec=numpy.loadtxt(datadir+"/spec.txt",usecols=(1,))
     grating_rotation_home_error = spec[0]
 
     Grat0,Home0,ArtErr,T2Con,T3Con=spec[0:5]
     FCampoly=spec[5:11]
 
-    grating_names=numpy.loadtxt(datadir+"gratings.txt",dtype=str,usecols=(0,))
+    grating_names=numpy.loadtxt(datadir+"/gratings.txt",dtype=str,usecols=(0,))
     #grname=numpy.loadtxt(datadir+"gratings.txt",dtype=str,usecols=(0,))
-    grlmm,grgam0=numpy.loadtxt(datadir+"gratings.txt",usecols=(1,2),unpack=True)
+    grlmm,grgam0=numpy.loadtxt(datadir+"/gratings.txt",usecols=(1,2),
+                               unpack=True)
 
 
     #
