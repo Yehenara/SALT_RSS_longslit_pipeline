@@ -10,7 +10,7 @@ import pysalt
 import logging
 from optparse import OptionParser
 
-datadir="/work/salt/sandbox_official/polSALT/polsalt/data/"
+datadir=os.path.dirname(os.path.realpath(__file__))
 
 # based on http://www.sal.wisc.edu/PFIS/docs/rss-vis/archive/protected/pfis/3170/3170AM0010_Spectrograph_Model_Draft_2.pdf
 # and https://github.com/saltastro/SALTsandbox/blob/master/polSALT/polsalt/specpolmap.py
