@@ -65,9 +65,10 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     Grat0,Home0,ArtErr,T2Con,T3Con=spec[0:5]
     FCampoly=spec[5:11]
 
-    grating_names=numpy.loadtxt(datadir+"gratings.txt",dtype=str,usecols=(0,))
+    grating_names=numpy.loadtxt(datadir+"/gratings.txt",dtype=str,usecols=(0,))
     #grname=numpy.loadtxt(datadir+"gratings.txt",dtype=str,usecols=(0,))
-    grlmm,grgam0=numpy.loadtxt(datadir+"gratings.txt",usecols=(1,2),unpack=True)
+    grlmm,grgam0=numpy.loadtxt(datadir+"/gratings.txt",usecols=(1,2),
+                               unpack=True)
 
 
     #
