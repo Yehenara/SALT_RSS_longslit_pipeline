@@ -39,8 +39,8 @@ def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None,
 
     for i_dist, x in enumerate(x_list):
 
-        ix = x-1
-        iy = y-1
+        ix = int(x-1)
+        iy = int(y-1)
 
         wl = wl_2d[iy,ix]
         # print x,y,"-->",wl
