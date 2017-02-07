@@ -146,8 +146,9 @@ def trace_arc(data,
                 current_col_idx, max_window_x, data.shape[0], data.shape[1]))
             break
 
-        next_row = data[current_col_idx-max_window_x:current_col_idx+max_window_x+1,
-                        next_row_idx]
+        next_row = data[int(current_col_idx-max_window_x):
+                            int(current_col_idx+max_window_x+1),
+                        int(next_row_idx)]
         #print "ROW:",next_row 
 
         # If next row contains pixels marked as NaN's stop work to avoid going 
