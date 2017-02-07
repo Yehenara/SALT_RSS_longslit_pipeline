@@ -137,7 +137,12 @@ def plot_sky_spectrum(wl, flux,
             if (basepoints is not None):
                 basepoint_values = sky_spline(basepoints)
                 ax.plot(basepoints, basepoint_values,
-                        color='green', marker='o', markersize=4)
+                        color='red', marker='o', markersize=4,
+                        fillstyle='full',
+                        markeredgecolor='red',
+                        markeredgewidth=0.0,
+                        linewidth=0)
+
 
         ax.set_ylim((0,y_max))
 

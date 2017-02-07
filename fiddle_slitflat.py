@@ -6,9 +6,9 @@ from astropy.io import fits
 import scipy.ndimage
 import logging
 
-write_debug = False
-
-def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5, bad_rows=None):
+def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5,
+                    bad_rows=None, debug=False,
+                    op=numpy.sum):
 
     y,x = numpy.indices(wl.shape)
 
@@ -18,6 +18,17 @@ def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5, bad_
     #fits.PrimaryHDU(data=y).writeto("fiddle_y.fits", clobber=True)
 
     logger = logging.getLogger("ComputeProfile")
+    logger.debug("Using measurement operation: %s" % (str(op)))
+
+    if (debug):
+        region_select = img.copy()
+        full_select = (wl >= line_wl-line_width) & (wl <= line_wl+line_width)
+        region_select[bad_rows.reshape((-1,1))] = numpy.NaN
+        region_select[~full_select] = numpy.NaN
+        fits.PrimaryHDU(data=region_select).writeto(
+            "slitflat_data_%.f.fits" % (line_wl), clobber=True,
+        )
+
 
     if (bad_rows is not None):
         wl = wl[~bad_rows, :]
@@ -27,6 +38,11 @@ def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5, bad_
 
     part_of_line = (wl >= line_wl-line_width) & (wl <= line_wl+line_width)
 
+    # if (debug):
+    #     full_select = part_of_line[~bad_rows]
+    #     region_select[bad_rows] = numpy.NaN
+    #     region_select[~bad_rows][~part_of_line] = numpy.NaN
+    #
     cut_wl = wl[part_of_line]
     cut_y = y[part_of_line]
     cut_img = img[part_of_line]
@@ -44,7 +60,7 @@ def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5, bad_
     combined[:,2] = cut_y
     combined[:,3] = cut_img
 
-    if (write_debug):
+    if (debug):
         out_fn = "fiddle_slitflat.comb.%7.2f-%.2f" % (line_wl, line_width)
         numpy.savetxt(out_fn, combined)
         numpy.save(out_fn, combined)
@@ -65,7 +81,7 @@ def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5, bad_
         wl_match = (wl[iy,:] >= line_wl-line_width) & (wl[iy,:] <= line_wl+line_width)
 
         # find line intensity
-        flux = numpy.sum(img[iy, wl_match])
+        flux = op(img[iy, wl_match])
         output[iy,0] = y[iy,0] #iy
         output[iy,1] = flux
 
@@ -89,7 +105,7 @@ def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5, bad_
 
     # print "valid", valid.shape
 
-    if (write_debug):
+    if (debug):
         out_fn = "fiddle_slitflat.comb2.%7.2f-%.2f" % (line_wl, line_width)
         # print out_fn
         with open(out_fn, "w") as f:
@@ -128,7 +144,7 @@ def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5, bad_
 
     output[:,n_iter+3] = output[:,n_iter+2] / output[900,n_iter+2]
 
-    if (write_debug):
+    if (debug):
         out_fn = "fiddle_slitflat.comb2.%7.2f-%.2f" % (line_wl, line_width)
         with open(out_fn, "w") as f:
            numpy.savetxt(f, output)
@@ -159,5 +175,6 @@ if __name__ == "__main__":
         line_wl=line_wl,
         line_width=line_width,
         n_iter=15,
-        polyorder=5
+        polyorder=5,
+        debug=True,
     )

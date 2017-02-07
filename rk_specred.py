@@ -1028,7 +1028,7 @@ def specred(rawdir, prodir, options,
         #
         img_raw = img_data.copy()
         profile_raw_1d = numpy.mean(img_raw, axis=1)
-        print profile_raw_1d
+        # print profile_raw_1d
 
         #
         # Use ARC to trace lines and compute a 2-D wavelength solution
@@ -1154,7 +1154,7 @@ def specred(rawdir, prodir, options,
         numpy.savetxt(sys.stdout, skyline_list, "%9.3f")
         numpy.savetxt("nightsky_lines", skyline_list)
 
-        hdu_appends.append(prep_science.q(skyline_list))
+        hdu_appends.append(prep_science.add_skylines_as_tbhdu(skyline_list))
 
         #
         # Map wavelength distortions
@@ -1288,7 +1288,7 @@ def specred(rawdir, prodir, options,
             flux=flattened_img,
             good_sky_data=good_sky_data,
             bad_rows=bad_rows,
-            output_filebase=fb[:-5]+".skyspec",
+            output_filebase=output_basename+".skyspec",
             sky_spline=spline,
             ext_list=['png'],
         )
@@ -1495,22 +1495,23 @@ def specred(rawdir, prodir, options,
         #
 
         # compute a source list (includes source position, extent, and intensity)
-        extract1d = True
-        prof, prof_var = find_sources.continuum_slit_profile(
-            data=hdu['SKYSUB.OPT'].data.copy(),
-            sky=hdu['SKYSUB.IMG'].data.copy(),
-            wl=wls_2d,
-            var=hdu['VAR'].data.copy(),
-        )
-        if  (prof is None or prof_var is None):
-            logger.warning("Unable to extract 1-D spectra")
-            extract1d = False
-        else:
-            numpy.savetxt("source_profile", prof)
-            src_profile_imghdu = find_sources.save_continuum_slit_profile(
-                prof=prof,
-                prof_var=prof_var)
-            hdu_appends.append(src_profile_imghdu)
+        extract1d = options.extract1d
+        if (extract1d):
+            prof, prof_var = find_sources.continuum_slit_profile(
+                data=hdu['SKYSUB.OPT'].data.copy(),
+                sky=hdu['SKYSUB.IMG'].data.copy(),
+                wl=wls_2d,
+                var=hdu['VAR'].data.copy(),
+            )
+            if  (prof is None or prof_var is None):
+                logger.warning("Unable to extract 1-D spectra")
+                extract1d = False
+            else:
+                numpy.savetxt("source_profile", prof)
+                src_profile_imghdu = find_sources.save_continuum_slit_profile(
+                    prof=prof,
+                    prof_var=prof_var)
+                hdu_appends.append(src_profile_imghdu)
 
         if (extract1d):
             sources = find_sources.identify_sources(prof, prof_var)
@@ -1609,6 +1610,7 @@ def specred(rawdir, prodir, options,
                 #
                 min_wl, max_wl = numpy.min(wls_2d), numpy.max(wls_2d)
                 mean_dispersion = (max_wl - min_wl) / wls_2d.shape[1]
+                output_dispersion = numpy.round(0.5*mean_dispersion, 2)
                 d_width = source[2:4] - source[0]
                 y_ranges = [d_width]
                 results = optimal_extraction.optimal_extract(
@@ -2214,6 +2216,8 @@ if __name__ == '__main__':
                       action="store_false", default=True)
     parser.add_option("", "--noisemode", dest='sky_noise_mode',
                       default="local1")
+    parser.add_option("", "--noextract", dest='extract1d',
+                      action='store_false', default=True)
 
     (options, cmdline_args) = parser.parse_args()
 

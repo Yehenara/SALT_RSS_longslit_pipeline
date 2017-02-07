@@ -13,7 +13,8 @@ import bottleneck
 
 from pysalt import mp_logging
 
-def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None):
+def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None,
+                    debug=False):
 
     distortions = [None] * len(x_list)
     distortions_binned = [None] * len(x_list)
@@ -121,10 +122,11 @@ def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None):
 
         binned_std = bottleneck.nanstd(data_trunc.reshape((n_max/n_rows, n_rows, data_trunc.shape[1])), axis=1)
         binned_median = bottleneck.nanmedian(data_trunc.reshape((n_max/n_rows, n_rows, data_trunc.shape[1])), axis=1)
-        numpy.savetxt("distortion_%d.log" % (x), datastore)
-        numpy.savetxt("distortion_%d.bin" % (x), binned)
-        numpy.savetxt("distortion_%d.binstd" % (x), binned_std)
-        numpy.savetxt("distortion_%d.binmed" % (x), binned_median)
+        if (debug):
+            numpy.savetxt("distortion_%d.log" % (x), datastore)
+            numpy.savetxt("distortion_%d.bin" % (x), binned)
+            numpy.savetxt("distortion_%d.binstd" % (x), binned_std)
+            numpy.savetxt("distortion_%d.binmed" % (x), binned_median)
 
         distortions[i_dist] = datastore
         distortions_binned[i_dist] = binned

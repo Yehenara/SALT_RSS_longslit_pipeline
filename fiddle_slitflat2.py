@@ -7,6 +7,7 @@ import scipy.ndimage
 from fiddle_slitflat import compute_profile
 import pickle
 import logging
+import pysalt.mp_logging
 
 import itertools
 def polyfit2dx(x, y, z, order=[3,3], ):
@@ -44,7 +45,9 @@ def polyval2dx(x, y, m, order=[3,3]):
 from optscale import polyfit2d, polyval2d
 
 
-def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
+def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None,
+                                 debug=False,
+                                 op=numpy.nanmean):
 
     logger = logging.getLogger("Create2dVPHFlat")
 
@@ -56,7 +59,8 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
     wl_steps = (wl_max - wl_min) / n_wl_chunks
     if (wl_steps > 20): wl_steps = 20
 
-    wl_centers = numpy.linspace(wl_min+0.5*wl_steps, wl_max-0.5*wl_steps, num=n_wl_chunks)
+    wl_centers = numpy.linspace(wl_min+0.5*wl_steps, wl_max-0.5*wl_steps,
+                                num=n_wl_chunks)
 
     # print wl_centers, wl_centers.shape
 
@@ -67,19 +71,22 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
         profiles.shape[0], profiles.shape[1]))
 
     # prepare an undersampled y grid to keep processing times in check
-    # based on this grid we can then interpolate up to the full resolution needed during reduction
+    # based on this grid we can then interpolate up to the full resolution
+    # needed during reduction
     ny = 40
-    sparse_y = numpy.linspace(-0.1*wl.shape[0], 1.1*wl.shape[0]-1, num=ny, endpoint=True, dtype=numpy.int)
+    sparse_y = numpy.linspace(-0.1*wl.shape[0], 1.1*wl.shape[0]-1, num=ny,
+                              endpoint=True, dtype=numpy.int)
     profiles_sparse = numpy.empty((sparse_y.shape[0], wl_centers.shape[0]))
     profiles_sparse[:, :] = numpy.NaN
 
-    if (reuse_profile is not None and os.path.isfile(reuse_profile)):
+    if (debug and reuse_profile is not None and os.path.isfile(reuse_profile)):
         with open(reuse_profile, "rb") as pf:
             (profiles, profiles_sparse) = pickle.load(pf)
 
     else:
         for i_wl, cwl in enumerate(wl_centers):
-            logger.debug("Extracting profile %d for wl %f +/- %f" % (i_wl+1, cwl, wl_steps))
+            logger.debug("Extracting profile %d for wl %f +/- %f" % (
+                i_wl+1, cwl, wl_steps))
 
             prof, poly = compute_profile(
                 wl=wl,
@@ -88,7 +95,10 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
                 line_width=wl_steps,
                 n_iter=15,
                 polyorder=5,
-                bad_rows=bad_rows)
+                bad_rows=bad_rows,
+                op=op,
+                debug=debug,
+            )
 
             if (prof is None):
                 logger.debug("No data found for %f +/- %f" % (cwl, wl_steps))
@@ -96,24 +106,34 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
 
             # print prof.shape, profiles.shape, profiles_sparse.shape
 
+            if (debug):
+                numpy.savetxt("vphflat_%d.dump" % (i_wl), prof)
+
             profiles[:,i_wl][~bad_rows] = prof
 
             profiles_sparse[:, i_wl] = numpy.polyval(poly, sparse_y)
 
-        with open("profiles_sparse", "wb") as pf:
-            pickle.dump((profiles, profiles_sparse), pf)
+        if (debug):
+            with open("profiles_sparse", "wb") as pf:
+                pickle.dump((profiles, profiles_sparse), pf)
 
-    fits.PrimaryHDU(data=profiles).writeto("fiddle_slitflat.fits", clobber=True)
+    if (debug):
+        fits.PrimaryHDU(data=profiles).writeto("fiddle_slitflat.fits",
+                                               clobber=True)
 
     # normalize all profiles
     ref_row = wl.shape[0] / 2
     profiles = profiles / profiles[ref_row,:]
-    fits.PrimaryHDU(data=profiles).writeto("fiddle_slitflatnorm.fits", clobber=True)
+    if (debug):
+        fits.PrimaryHDU(data=profiles).writeto("fiddle_slitflatnorm.fits",
+                                               clobber=True)
 
     # also normalize the sparse profile grid
     ref_row_sparse = sparse_y.shape[0] / 2
     profiles_sparse = profiles_sparse / profiles_sparse[ref_row_sparse, :]
-    fits.PrimaryHDU(data=profiles_sparse).writeto("fiddle_slitflatnorm_sparse.fits", clobber=True)
+    if (debug):
+        fits.PrimaryHDU(data=profiles_sparse).writeto(
+            "fiddle_slitflatnorm_sparse.fits", clobber=True)
 
 
     #
@@ -135,10 +155,12 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
     fit_residuals = [fits.PrimaryHDU()]
     order = [1, 5]
     for final_iteration in range(10):
-        logger.debug("iteration %d - %d good data points of %d" % (final_iteration+1,  numpy.sum(good_data), profiles_sparse.size))
+        logger.debug("iteration %d - %d good data points of %d" % (
+            final_iteration+1,  numpy.sum(good_data), profiles_sparse.size))
         # print profiles_sparse.shape
 
-        # poly2d = polyfit2d(x=wl_x2d[good_data], y=y_y2d[good_data], z=profiles_sparse[good_data], order=5)
+        # poly2d = polyfit2d(x=wl_x2d[good_data], y=y_y2d[good_data],
+        # z=profiles_sparse[good_data], order=5)
         # fit2d = polyval2d(x=wl_x2d, y=y_y2d, m=poly2d)
 
         interpol = scipy.interpolate.SmoothBivariateSpline(
@@ -149,7 +171,8 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
             bbox=[None, None, None, None],
             kx=5, ky=5)
 
-        #poly2d = polyfit2dx(x=wl_x2d[good_data], y=y_y2d[good_data], z=profiles_sparse[good_data], order=order)
+        #poly2d = polyfit2dx(x=wl_x2d[good_data], y=y_y2d[good_data],
+        # z=profiles_sparse[good_data], order=order)
         #fit2d = polyval2dx(x=wl_x2d, y=y_y2d, m=poly2d, order=order)
 
         fit2d = interpol(x=wl_x2d, y=y_y2d, grid=False)
@@ -167,14 +190,20 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
 
         fit_residuals.append(fits.ImageHDU(data=residuals.copy()))
 
-        logger.debug("Iteration %d: median/sigma = %f / %f" % (final_iteration+1, _median, _sigma))
+        logger.debug("Iteration %d: median/sigma = %f / %f" % (
+            final_iteration+1, _median, _sigma))
         residuals[~good_data] = numpy.NaN
         #fit_residuals.append(fits.ImageHDU(data=residuals))
 
-    fits.HDUList(fit_steps).writeto("fiddle_slitflatnorm_sparsefit.fits", clobber=True)
-    fits.HDUList(fit_residuals).writeto("fiddle_slitflatnorm_sparseresiduals.fits", clobber=True)
-    # fits.PrimaryHDU(data=wl_x2d).writeto("fiddle_slitflatnorm_x2d.fits", clobber=True)
-    # fits.PrimaryHDU(data=y_y2d).writeto("fiddle_slitflatnorm_y2d.fits", clobber=True)
+    if (debug):
+        fits.HDUList(fit_steps).writeto(
+            "fiddle_slitflatnorm_sparsefit.fits", clobber=True)
+        fits.HDUList(fit_residuals).writeto(
+            "fiddle_slitflatnorm_sparseresiduals.fits", clobber=True)
+    # fits.PrimaryHDU(data=wl_x2d).writeto(
+    # "fiddle_slitflatnorm_x2d.fits", clobber=True)
+    # fits.PrimaryHDU(data=y_y2d).writeto(
+    # "fiddle_slitflatnorm_y2d.fits", clobber=True)
 
     #
     # Now compute the full resolution 2-d frame from the best-fit polynomial
@@ -183,23 +212,38 @@ def create_2d_flatfield_from_sky(wl, img, reuse_profile=None, bad_rows=None):
     full_y, _ = numpy.indices(img.shape)
     # fullres2d = polyval2dx(x=wl, y=full_y, m=poly2d, order=order)
     fullres2d = interpol(x=wl, y=full_y, grid=False)
-    fits.PrimaryHDU(data=fullres2d).writeto("fiddle_slitflatnorm_fullres2d.fits", clobber=True)
 
-    fits.PrimaryHDU(data=(img/fullres2d)).writeto("fiddle_slitflatnorm_fullresimg2d.fits", clobber=True)
+    if (debug):
+        fits.PrimaryHDU(data=fullres2d).writeto(
+            "fiddle_slitflatnorm_fullres2d.fits", clobber=True)
+        fits.PrimaryHDU(data=(img/fullres2d)).writeto(
+            "fiddle_slitflatnorm_fullresimg2d.fits", clobber=True)
 
     return fullres2d, interpol
 
 if __name__ == "__main__":
+
+    logger = pysalt.mp_logging.setup_logging()
 
     fn = sys.argv[1]
 
     hdu = fits.open(fn)
 
     wl = hdu['WAVELENGTH'].data
-    img = hdu['SCI.RAW'].data
+    img = hdu['SCI'].data
 
     reuse_profile = None
     if (len(sys.argv) > 2 and sys.argv[2] == "reuse"):
         reuse_profile = "profiles_sparse"
 
-    create_2d_flatfield_from_sky(wl, img)
+    try:
+        bad_rows = (hdu['BADROWS'].data > 0)
+        pass
+    except:
+        bad_rows = None
+
+    vph_flatfield, vph_flat_interpol = create_2d_flatfield_from_sky(wl, img,
+                                 bad_rows=bad_rows, debug=True,)
+
+
+    pysalt.mp_logging.shutdown_logging(logger)
