@@ -39,8 +39,10 @@ def compute_spectrum_trace(data, start_x, start_y, xbin=1,
         for x in range(_start, _end, _step):
             # print x
 
-            slit = data[_y - w:_y + w, x:x+xbin]
-            pos_y = iy[_y - w:_y + w, x:x+xbin]
+            slit = data[int(_y - w):int(_y + w),
+                        int(x):int(x+xbin)]
+            pos_y = iy[int(_y - w):int(_y + w),
+                        int(x):int(x+xbin)]
 
             valid = numpy.isfinite(slit)
             # print x, valid

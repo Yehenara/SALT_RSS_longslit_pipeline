@@ -149,7 +149,7 @@ def integrate_source_profile(width=25, supersample=10, wl_resolution=5,
     y_min = -width - 0.5
     y_max = width + 0.5
 
-    n_samples = (y_max - y_min) * supersample
+    n_samples = int((y_max - y_min) * supersample)
     y_start = (numpy.arange(n_samples, dtype=numpy.float)/supersample - width)
     y_width = 1./supersample
     y_end = y_start + y_width
@@ -533,7 +533,7 @@ def optimal_extract(img_data, wl_data, variance_data,
         y_data_1d = spec_y_data.ravel()
         opt_weight_1d = weight_data.ravel()
 
-        n_out_y = y2 - y1 + 4
+        n_out_y = int(y2 - y1 + 4)
         y_min = y1 - 2.
         drizzled_flux = numpy.zeros((out_wl_count, n_out_y))
         drizzled_var = numpy.zeros((out_wl_count, n_out_y))

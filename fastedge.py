@@ -22,7 +22,7 @@ def find_line_edges(allskies, line_sigma=None):
     logger.info("wavelength range: %f -- %f" % (min_l, max_l))
 
     resolution = 0.25
-    n_bins = (max_l-min_l)/resolution
+    n_bins = int(math.ceil((max_l-min_l)/resolution))
 
     bins = numpy.arange(n_bins+1)*resolution+min_l
     # print bins[:5], bins[-5:]

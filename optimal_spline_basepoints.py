@@ -81,10 +81,10 @@ def find_source_mask(img_data, debug=False):
 
 
     # do running median filter
-    filter_size = 0.1*img_data.shape[0]
+    filter_size = int(0.1*img_data.shape[0])
     med_filt = scipy.ndimage.filters.median_filter(flat.reshape((-1,1)),
                                                    size=filter_size,
-                                                   mode='mirror')[:,0]
+                                                   mode='constant')[:,0]
     if (debug):
         numpy.savetxt("obj_mask.medfilt", med_filt)
 
@@ -715,10 +715,10 @@ def optimal_sky_subtraction(obj_hdulist,
         good_sky_data_1d = good_sky_data_sorted # good_sky_data.reshape((-1,1))[wl_sort]
         # print
         n_noise_blocks = math.ceil(obj_cube_1d.shape[0] / float(noiseblocksize))
-        n_to_add = n_noise_blocks*noiseblocksize-obj_cube_1d.shape[0]
+        n_to_add = int(n_noise_blocks*noiseblocksize-obj_cube_1d.shape[0])
         # print n_to_add
         n_add_front = int(n_to_add/2)
-        n_add_back = n_to_add - n_add_front
+        n_add_back = int(n_to_add - n_add_front)
         pad_width = ((int(n_add_front),int(n_add_back)),(0,0))
         # print pad_width, obj_cube_1d.shape
 

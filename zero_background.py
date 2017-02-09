@@ -52,7 +52,8 @@ def find_background_correction(hdulist=None,
     #
     for src in sources:
         w = src[2:4] - src[0]
-        img_data[src[0]-2*(src[0]-src[2]):src[0]+2*(src[3]-src[0])] = numpy.NaN
+        img_data[int(src[0]-2*(src[0]-src[2])):
+                 int(src[0]+2*(src[3]-src[0]))] = numpy.NaN
 
     fits.PrimaryHDU(data=img_data).writeto("zeroback.fits", clobber=True)
 
