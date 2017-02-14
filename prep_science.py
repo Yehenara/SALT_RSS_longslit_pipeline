@@ -237,7 +237,8 @@ def exclude_lines_close_to_chipgaps(
 
 
 def find_nightsky_lines(
-        data, y_range=None, write_debug_data=False):
+        data, y_range=None, write_debug_data=False,
+        linewidth=2,):
 
     logger = logging.getLogger("NightskyFlats")
 
@@ -259,7 +260,7 @@ def find_nightsky_lines(
 
     line_list = wlcal.find_list_of_lines(nightsky_spec_1d, readnoise=2,
                                      avg_width=(y_range[1]-y_range[0]),
-                                     pre_smooth=2)
+                                     pre_smooth=linewidth)
     dum = StringIO.StringIO()
     numpy.savetxt(dum, line_list)
     logger.debug("Found these lines:\n%s" % (dum.getvalue()))
