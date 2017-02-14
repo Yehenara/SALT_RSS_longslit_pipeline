@@ -21,7 +21,6 @@ import shutil
 import time
 
 import matplotlib
-matplotlib.use('Agg')
 
 import numpy
 # import pyfits
@@ -32,18 +31,9 @@ from scipy.ndimage.filters import median_filter
 import bottleneck
 import scipy.interpolate
 
-numpy.seterr(divide='ignore', invalid='ignore')
-
 # Disable nasty and useless RankWarning when spline fitting
 import warnings
 
-warnings.simplefilter('ignore', numpy.RankWarning)
-# warnings.simplefilter('ignore', fits.fitsDeprecationWarning)
-from astropy.utils.exceptions import *
-
-warnings.simplefilter('ignore', AstropyDeprecationWarning)
-warnings.simplefilter('ignore', FutureWarning)
-warnings.simplefilter('ignore', UserWarning)
 # sys.path.insert(1, "/work/pysalt/")
 # sys.path.insert(1, "/work/pysalt/plugins")
 # sys.path.insert(1, "/work/pysalt/proptools")
@@ -111,6 +101,17 @@ import zero_background
 import tracespec
 import optimal_extraction
 import plot_high_res_sky_spec
+import findcentersymmetry
+
+matplotlib.use('Agg')
+numpy.seterr(divide='ignore', invalid='ignore')
+warnings.simplefilter('ignore', numpy.RankWarning)
+# warnings.simplefilter('ignore', fits.fitsDeprecationWarning)
+from astropy.utils.exceptions import *
+warnings.simplefilter('ignore', AstropyDeprecationWarning)
+warnings.simplefilter('ignore', FutureWarning)
+warnings.simplefilter('ignore', UserWarning)
+
 
 wlmap_fitorder = [2, 2]
 
@@ -463,7 +464,7 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
         logger.debug("Mosaicing all chips together")
         geomfile = pysalt.get_data_filename("pysalt$data/rss/RSSgeom.dat")
         geomfile = pysalt.get_data_filename("data/rss/RSSgeom.dat")
-        logger.debug("Reading gemotry from file %s (%s)" % (geomfile, os.path.isfile(geomfile)))
+        logger.debug("Reading geometry from file %s (%s)" % (geomfile, os.path.isfile(geomfile)))
 
         # does CCD geometry definition file exist
         if (not os.path.isfile(geomfile)):
@@ -507,6 +508,38 @@ def salt_prepdata(infile, badpixelimage=None, create_variance=False,
             # logger.debug("done with mosaic")
 
     return hdulist
+
+
+def save_sky_spec(wl, sky_spline, hi_res=None):
+
+    wl_min = numpy.min(wl)
+    wl_max = numpy.max(wl)
+    mean_dwl = (wl_max - wl_min) / wl.shape[1]
+
+    if (hi_res is None):
+        hi_res = 0.1 * mean_dwl
+
+    n_points = int((wl_max - wl_min) / hi_res)
+
+    sky_wl = numpy.arange(n_points, dtype=numpy.float) * hi_res + wl_min
+    sky_flux = sky_spline(sky_wl)
+
+    imghdu = fits.ImageHDU(
+        data=sky_flux,
+        name="SKYSPEC"
+    )
+
+    imghdu.header['WCSNAME'] = "calibrated wavelength"
+    imghdu.header['CRPIX1'] = 1.
+    imghdu.header['CRVAL1'] = wl_min
+    imghdu.header['CD1_1'] = hi_res
+    imghdu.header['CTYPE1'] = "AWAV"
+    imghdu.header['CUNIT1'] = "Angstrom"
+
+    return imghdu
+
+
+
 
 
 #################################################################################
@@ -616,7 +649,8 @@ def specred(rawdir, prodir, options,
         if (obstype is None or (obstype.strip() == "" and 'CCDTYPE' in hdulist[0].header)):
             obstype = hdulist[0].header['CCDTYPE']
         if (obstype.find("FLAT") >= 0 and
-            hdulist[0].header['INSTRUME'] == "RSS"):
+            hdulist[0].header['INSTRUME'] == "RSS" and
+            options.use_flats):
             #
             # This is a flat-field
             #
@@ -767,7 +801,7 @@ def specred(rawdir, prodir, options,
             hdu_mosaiced = salt_prepdata(filename,
                                          badpixelimage=None,
                                          create_variance=True,
-                                         clean_cosmics=True,
+                                         clean_cosmics=False,
                                          mosaic=True,
                                          verbose=False)
 
@@ -777,7 +811,29 @@ def specred(rawdir, prodir, options,
             #
             logger.info("Starting wavelength calibration")
             binx, biny = pysalt.get_binning(hdulist)
-            wls_data = wlcal.find_wavelength_solution(hdu_mosaiced, line=(2070/biny))
+
+            logger.info("Checking symmetry of ARC lines to tune the spectropgraph model")
+            symmetry_lines, best_midline, linewidth = \
+                findcentersymmetry.find_curvature_symmetry_line(
+                    hdulist=hdu_mosaiced,
+                    data_ext='SCI',
+                    avg_width=10,
+                    n_lines=10,
+            )
+            reference_row = int(best_midline[1])
+            logger.info("Using row %d as reference row" % (reference_row))
+            hdu_mosaiced[0].header['WLREFROW'] = (
+                reference_row, "symmetry row")
+            hdu_mosaiced[0].header['WLREFCOL'] = (
+                best_midline[0], "approx line position x")
+            hdu_mosaiced[0].header['LINEWDTH'] = (
+                linewidth, "linewidth in pixels")
+
+            wls_data = wlcal.find_wavelength_solution(
+                hdu_mosaiced,
+                line=reference_row,
+                #line=(2070/biny)
+            )
 
             #
             # Write wavelength solution to FITS header so we can access it 
@@ -806,7 +862,7 @@ def specred(rawdir, prodir, options,
                 n_lines_to_trace=-15,  # -50, # trace all lines with S/N > 50
                 fit_order=wlmap_fitorder,
                 output_wavelength_image="wl+image.fits",
-                debug=False,
+                debug=True,
                 arc_region_file=arc_region_file,
                 trace_every=0.05,
                 wls_data=wls_data,
@@ -824,14 +880,22 @@ def specred(rawdir, prodir, options,
                 header=hdu_mosaiced[0].header,
                 img=hdu_mosaiced['SCI'].data,
                 xbin=binx, ybin=biny,
-                y_center=2070,
+                y_center=reference_row*biny,
             )
             hdu_mosaiced.append(
-                fits.ImageHDU(data=model_wl,
-                              name="WL_MODEL_2D",
-                              header=fits.Header({"OBJECT": "wavelength map from RSS model"}))
+                fits.ImageHDU(
+                    data=model_wl,
+                    name="WL_MODEL_2D",
+                    header=fits.Header(
+                        {"OBJECT": "wavelength map from RSS model"}
+                    )
+                )
             )
-            hdu_mosaiced[0].header['RSSYCNTR'] = (2070., "reference line for spectrograph model")
+            fits.PrimaryHDU(data=model_wl).writeto("arcwl.fits", clobber=True)
+            hdu_mosaiced[0].header['RSSYCNTR'] = (
+                reference_row*biny,
+                "reference line for spectrograph model"
+            )
 
 
             #
@@ -839,6 +903,7 @@ def specred(rawdir, prodir, options,
             #
             logger.info("Extracting a ARC-spectrum from the entire frame")
             arc_regions = numpy.array([[0, hdu_mosaiced['SCI'].data.shape[0]]])
+            hdu_mosaiced.writeto("dummy.fits", clobber=True)
             arc2d = skysub2d.make_2d_skyspectrum(
                 hdu_mosaiced,
                 wls_2darc,
@@ -877,6 +942,7 @@ def specred(rawdir, prodir, options,
             # logger.debug("Done with specrectify")
 
     # return
+    # os._exit(0)
 
     # with open("flatlist", "w") as picklefile:
     #    pickle.dump(flatfield_list, picklefile)
@@ -983,13 +1049,13 @@ def specred(rawdir, prodir, options,
         #
         logger.info("Creating mosaiced frame WITHOUT cosmic-ray rejection")
         hdulist_crj = salt_prepdata(filename,
-                                  flatfield_frame=masterflat_filename,
-                                  badpixelimage=None,
-                                  create_variance=True,
-                                  clean_cosmics=True,
-                                  mosaic=True,
-                                  verbose=False,
-                                  )
+                                    flatfield_frame=masterflat_filename,
+                                    create_variance=True,
+                                    badpixelimage=None,
+                                    clean_cosmics=True,
+                                    mosaic=True,
+                                    verbose=False,
+                                    )
         #hdu_sci_nocrj = hdu_nocrj['SCI']
         #hdu_sci_nocrj.name = 'SCI.NOCRJ'
         #hdu.append(hdu_sci_nocrj)
@@ -1026,6 +1092,20 @@ def specred(rawdir, prodir, options,
             logger.info("Using ARC %s for wavelength calibration" % (good_arc))
 
         #
+        # Find symmetry from sky-lines
+        #
+        logger.info("Checking symmetry of SKY lines to tune the spectropgraph model")
+        symmetry_lines, best_midline, linewidth = \
+            findcentersymmetry.find_curvature_symmetry_line(
+                hdulist=hdu,
+                data_ext='SCI',
+                avg_width=10,
+                n_lines=10,
+        )
+        reference_row = int(best_midline[1])
+        logger.info("Using row %d as reference row" % (reference_row))
+
+        #
         # Find a global slit profile to identify obscured regions (i.e. behind guide and/or focus probe)
         #
         img_raw = img_data.copy()
@@ -1052,7 +1132,17 @@ def specred(rawdir, prodir, options,
         # hdu.append(wl_hdu)
 
         arc_hdu = fits.open(good_arc)
-        wls_2d = arc_hdu['WAVELENGTH'].data
+        # wls_2d = arc_hdu['WAVELENGTH'].data
+
+        model_wl = wlmodel.rssmodelwave(
+            header=arc_hdu[0].header,
+            img=arc_hdu['SCI'].data,
+            xbin=binx, ybin=biny,
+            y_center=reference_row * biny,
+        )
+        # wls_2d = arc_hdu['WL_MODEL_2D'].data
+        wls_2d = model_wl
+
 
         n_params = arc_hdu[0].header['WLSFIT_N']
         # copy a couple of relevant keywords
@@ -1071,6 +1161,8 @@ def specred(rawdir, prodir, options,
         in_data = hdu['SCI.CRJ'].data if 'SCI.CRJ' in hdu else hdu['SCI'].data
         skylines, skyline_list = prep_science.find_nightsky_lines(
             data=numpy.array(in_data),
+            linewidth=linewidth,
+
         )
         #
         # TODO: CONVERT SKYLINE POSITION FROM PIXELS TO WAVELENGTHS
@@ -1152,9 +1244,10 @@ def specred(rawdir, prodir, options,
         else:
             pass
 
-        print "FOUND NIGHT-SKY LINES:"
-        numpy.savetxt(sys.stdout, skyline_list, "%9.3f")
-        numpy.savetxt("nightsky_lines", skyline_list)
+        if (options.debug):
+            # print "FOUND NIGHT-SKY LINES:"
+            # numpy.savetxt(sys.stdout, skyline_list, "%9.3f")
+            numpy.savetxt("nightsky_lines", skyline_list)
 
         hdu_appends.append(prep_science.add_skylines_as_tbhdu(skyline_list))
 
@@ -1294,6 +1387,13 @@ def specred(rawdir, prodir, options,
             sky_spline=spline,
             ext_list=['png'],
         )
+
+        #
+        # Save a high-res version of the sky-spectrum as 1-D fits for
+        # wavelength verification and other purposes
+        #
+        hdu.append(save_sky_spec(wl=wls_2d, sky_spline=spline))
+
         # recompute sky-2d based on the full wavelength map and the spline interpolator
         # sky_2d = spline(wls_2d)
 
@@ -1626,7 +1726,7 @@ def specred(rawdir, prodir, options,
                     reference_y=source[0],
                     y_ranges=y_ranges,
                     dwl=0.5*mean_dispersion,
-                    debug_filebase=fb[:-5]+"__"
+                    debug_filebase=fb[:-5]+"__" if options.debug else None,
                 )
 
                 #
@@ -2219,6 +2319,8 @@ if __name__ == '__main__':
     parser.add_option("", "--noisemode", dest='sky_noise_mode',
                       default="local1")
     parser.add_option("", "--noextract", dest='extract1d',
+                      action='store_false', default=True)
+    parser.add_option("", "--noflats", dest='use_flats',
                       action='store_false', default=True)
 
     (options, cmdline_args) = parser.parse_args()
