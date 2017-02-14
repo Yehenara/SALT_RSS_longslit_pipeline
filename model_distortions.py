@@ -16,9 +16,14 @@ import map_distortions
 
 def map_wavelength_distortions(skyline_list, wl_2d, img_2d,
                                diff_2d=None, badrows=None, s2n_cutoff=5,
+                               ref_row=None, linewidth=10,
                                debug=False):
 
     logger = logging.getLogger("ModelDistortions")
+
+    if (ref_row is None):
+        ref_row = 0.4 * wl_2d.shape[0]
+    ref_row = int(ref_row)
 
     # print "        X      peak continuum   c.noise       S/N      WL/X"
     # print "="*59
@@ -47,16 +52,25 @@ def map_wavelength_distortions(skyline_list, wl_2d, img_2d,
     #
     # Now load all files for these lines
     #
-    all_lines = [None] * skyline_list.shape[0]
 
+    avg_dispersion = (wl_2d[ref_row,-1] - wl_2d[ref_row,0]) / wl_2d.shape[1]
+    d_wl = 1.5 * linewidth * avg_dispersion
+    logger.info("Searching for WL distortion using a maximum tolerance of %.2f A" % (d_wl))
     dist, dist_binned, bias_level, dist_median, dist_std  = \
         map_distortions.map_distortions(wl_2d=wl_2d,
                                         diff_2d=diff_2d,
                                         img_2d=img_2d,
                                         x_list=skyline_list[:,0],
-                                        y=610, #img_2d.shape[0] / 2.
+                                        y=ref_row, #img_2d.shape[0] / 2.
                                         badrows=badrows,
+                                        dwl=d_wl,
+                                        debug=debug,
         )
+    print len(dist)
+    print len(dist_binned)
+    print len(dist_median)
+    print len(dist_std)
+
 
     # print "\n----------"*10,"mapping distortions", "\n-------------"*5
 
@@ -70,6 +84,7 @@ global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=
 physical
     """
 
+    all_lines = [] #[None] * skyline_list.shape[0]
     for i, line in enumerate(skyline_list):
 
         print >>regfile, "point(%.2f,%.2f) # point=circle" % (line[0], 610)
@@ -107,11 +122,25 @@ physical
         med_dwl = numpy.median(linedata_mean[:, 9][not_nan])
         linedata_mean[:, 9] -= med_dwl
 
-        all_lines[i] = linedata_mean
+        print "LINEDATA", i, "\n", linedata_mean, "\n\n"
+        numpy.savetxt("linedata_%d" % (i), linedata_mean)
+
+        #all_lines[i] = linedata_mean
+        all_lines.append(linedata_mean)
+
+    print len(all_lines)
+
+    import time
+    time.sleep(3)
+
+    for l in all_lines:
+        print type(l), l.shape
 
     all_lines = numpy.array(all_lines)
-    # print all_lines.shape
+    print all_lines
 
+    logger.info("ALL-LINES SHAPE: %d,%d,%d" % (
+        all_lines.shape[0], all_lines.shape[1], all_lines.shape[2]))
     try:
         wl_dist = all_lines[:, :, [7, 0, 9]] # wl,y,d_wl
         # print wl_dist.shape
@@ -123,6 +152,7 @@ physical
         logger.error("Index error when trying to create the distortion "
                      "model data (%s)" % (str(all_lines.shape)))
         return None, None
+
 
     #
     # Now convert all the data we have into a full 2-d model in wl & x
@@ -194,7 +224,11 @@ if __name__ == "__main__":
         skyline_list[:,i] = skytable_ext.data.field(i)
 
 
-    wl_2d = hdulist['WAVELENGTH'].data
+    try:
+        wl_2d = hdulist['WAVELENGTH'].data
+    except:
+        wl_2d = hdulist['WAVELENGTH.RAW'].data
+
     diff_2d = hdulist['SKYSUB.OPT'].data
     img_2d = hdulist['SCI'].data
 
@@ -210,7 +244,8 @@ if __name__ == "__main__":
         wl_2d=wl_2d,
         img_2d=img_2d,
         diff_2d=diff_2d,
-        badrows=badrows
+        badrows=badrows,
+        debug=True,
     )
 
     fits.PrimaryHDU(data=distortion_2d).writeto("distortion_2d.fits", clobber=True)

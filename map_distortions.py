@@ -14,7 +14,7 @@ import bottleneck
 from pysalt import mp_logging
 
 def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None,
-                    debug=False):
+                    debug=False, dwl=3):
 
     distortions = [None] * len(x_list)
     distortions_binned = [None] * len(x_list)
@@ -49,7 +49,7 @@ def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None,
 
         _y, _x = numpy.indices(wl_2d.shape)
 
-        dwl = 3.
+        # dwl = 3.
 
         datastore = numpy.empty((wl_2d.shape[0], 14))
         datastore[:,:] = numpy.NaN
