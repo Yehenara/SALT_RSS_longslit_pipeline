@@ -218,15 +218,15 @@ def extract_arc_spectrum(hdulist, line=None, avg_width=20):
     logger = logging.getLogger("ExtractSpec")
 
     # Find central line based on the dimensions
+    center = hdulist['SCI'].data.shape[0] / 2 if line is None else line
     logger.debug("Extracting average of +/- %d lines around y = %4d" % (
-            avg_width, line))
-    center = hdulist['SCI'].data.shape[0] / 2 if line == None else line
+            avg_width, center))
 
     # average over a couple of lines
     binx, biny = pysalt.get_binning(hdulist)
     binned_width = avg_width / biny
 
-    spec = hdulist['SCI'].data[center-avg_width:center+avg_width,:]
+    spec = hdulist['SCI'].data[int(center-avg_width):int(center+avg_width),:]
     #print spec.shape
 
     avg_spec = numpy.average(spec, axis=0)
@@ -241,7 +241,9 @@ def extract_arc_spectrum(hdulist, line=None, avg_width=20):
 
 mm_to_A = 10e6
 
-def find_list_of_lines(spec, readnoise=2, gain=1, avg_width=1, pre_smooth=None):
+def find_list_of_lines(spec, readnoise=2, gain=1, avg_width=1,
+                       pre_smooth=None, debug=False,
+                       return_continnum=False):
 
     """
 
@@ -285,7 +287,8 @@ def find_list_of_lines(spec, readnoise=2, gain=1, avg_width=1, pre_smooth=None):
     #
     logger.debug("Median-filtering spectrum to estimate continuum")
     continuum = scipy.ndimage.filters.median_filter(spec, 25, mode='reflect')
-    numpy.savetxt("continuum_scipy", continuum)
+    if (debug):
+        numpy.savetxt("continuum_scipy", continuum)
 
     logger.debug("Estimating continuum using wide median-filter to exclude lines")
     _med, _std = 0, numpy.nanmax(spec)/2
@@ -299,7 +302,8 @@ def find_list_of_lines(spec, readnoise=2, gain=1, avg_width=1, pre_smooth=None):
     # now median_filter over the continuum
     fw = 50
 
-    numpy.savetxt("spec_nolines", spec_nolines)
+    if (debug):
+        numpy.savetxt("spec_nolines", spec_nolines)
 
     # add some padding to avoid querying non-existant data
     padded = numpy.empty((spec_nolines.shape[0]+2*fw))
@@ -311,7 +315,8 @@ def find_list_of_lines(spec, readnoise=2, gain=1, avg_width=1, pre_smooth=None):
     # continuum = numpy.array([
     #     bottleneck.nanmedian(spec_nolines[i-fw:i+fw]) for i in range(spec_nolines.shape[0])])
     continuum[numpy.isnan(continuum)] = 0.
-    numpy.savetxt("continuum", continuum)
+    if (debug):
+        numpy.savetxt("continuum", continuum)
 
     #
     # Search for peaks
@@ -319,14 +324,15 @@ def find_list_of_lines(spec, readnoise=2, gain=1, avg_width=1, pre_smooth=None):
     #
     logger.debug("Starting to search for lines")
 
-    if (pre_smooth > 0):
+    if (pre_smooth is not None and pre_smooth > 0):
         spec = scipy.ndimage.filters.gaussian_filter(
             input=spec, sigma=pre_smooth, 
             order=0, output=None, 
             mode='constant', cval=0.0, 
 #            truncate=3.0,
         )
-        numpy.savetxt("spec_presmoothed", spec)
+        if (debug):
+            numpy.savetxt("spec_presmoothed", spec)
 
     peak = numpy.empty(spec.shape, dtype=numpy.bool)
     peak[:] = False
@@ -341,12 +347,13 @@ def find_list_of_lines(spec, readnoise=2, gain=1, avg_width=1, pre_smooth=None):
     
     peak_values = numpy.array(spec)
     peak_values[~peak] = -1
-    numpy.savetxt("peaks_values", peak_values)
-    
-    numpy.savetxt("peaks_yesno", peak)
-    numpy.savetxt("wl_peaks", numpy.append(
-#        x_pixels[peak].reshape((-1,1)), spec[peak].reshape((-1,1)), axis=1))
-        x_pixels[peak].reshape((-1,1)), spec[peak].reshape((-1,1)), axis=1))
+
+    if (debug):
+        numpy.savetxt("peaks_values", peak_values)
+        numpy.savetxt("peaks_yesno", peak)
+        numpy.savetxt("wl_peaks", numpy.append(
+            # x_pixels[peak].reshape((-1,1)), spec[peak].reshape((-1,1)), axis=1))
+            x_pixels[peak].reshape((-1,1)), spec[peak].reshape((-1,1)), axis=1))
     
     # Now reject all peaks that are not significantly over the estimated background noise
     # number of electrons from source/sky
@@ -354,17 +361,19 @@ def find_list_of_lines(spec, readnoise=2, gain=1, avg_width=1, pre_smooth=None):
         (spec*gain*avg_width) + (readnoise**2*avg_width)
     ) / avg_width
     #continuum_noise = numpy.sqrt(numpy.fabs(continuum*gain)+(readnoise**2*avg_width)) / (2*avg_width)
-    numpy.savetxt("continuum_noise", continuum_noise)
 
     # require at least 3 sigma over background noise
     real_peak = peak & ((spec-continuum) > 3*continuum_noise) #& (spec > continuum+100)
-    numpy.savetxt("wl_real_peaks", numpy.append(
-        x_pixels[real_peak].reshape((-1,1)), spec[real_peak].reshape((-1,1)), axis=1))
 
     # compute full S/N for each pixels
     s2n = (spec - continuum) / (numpy.sqrt(spec*readnoise*2*avg_width) / (2*avg_width))
-    numpy.savetxt("wl_real_peaks.sn", numpy.append(
-        x_pixels[real_peak].reshape((-1,1)), s2n[real_peak].reshape((-1,1)), axis=1))
+
+    if (debug):
+        numpy.savetxt("continuum_noise", continuum_noise)
+        numpy.savetxt("wl_real_peaks", numpy.append(
+            x_pixels[real_peak].reshape((-1,1)), spec[real_peak].reshape((-1,1)), axis=1))
+        numpy.savetxt("wl_real_peaks.sn", numpy.append(
+            x_pixels[real_peak].reshape((-1,1)), s2n[real_peak].reshape((-1,1)), axis=1))
 
 
     # Combine all relevant data generated above for later use
@@ -378,6 +387,8 @@ def find_list_of_lines(spec, readnoise=2, gain=1, avg_width=1, pre_smooth=None):
 
     # numpy.savetxt("detectlines.debug", combined)
 
+    if (return_continnum):
+        return combined, continuum
     return combined
 
 
@@ -405,12 +416,16 @@ def compute_wavelength_solution(matched, max_order=3):
     coeffs, rest = ret
     residuals, rank, singular_values, rcond = rest
 
-    logger.debug("Fit coeffs: %s" % (" ".join(["%.6e" % c for c in coeffs])))
-    logger.debug("residuals: %e" % (residuals))
-    logger.debug("rank: %d" % (rank))
-    logger.debug("singular_values: %s" % (" ".join(["%e" % sv for sv in singular_values])))
-    logger.debug("rcond: %f" % (rcond))
+    # print residuals
 
+    logger.debug("Fit coeffs: %s" % (" ".join(["%.6e" % c for c in coeffs])))
+    try:
+        logger.debug("residuals: %e" % (residuals))
+        logger.debug("rank: %d" % (rank))
+        logger.debug("singular_values: %s" % (" ".join(["%e" % sv for sv in singular_values])))
+        logger.debug("rcond: %f" % (rcond))
+    except (TypeError) as e:
+        logger.error(str(e))
     #print ret
 
     return coeffs
