@@ -50,7 +50,8 @@ def get_integrated_spectrum(hdu_rect, filename):
 #################################################################################
 #################################################################################
 #################################################################################
-def find_slit_profile(hdulist, filename, source_region=[1400,2600]):
+def find_slit_profile(hdulist, filename, source_region=[1400,2600],
+                      debug=False):
     """
 
     Starting with the intensity profile along the slit, reject all likely 
@@ -84,7 +85,8 @@ def find_slit_profile(hdulist, filename, source_region=[1400,2600]):
     integrated_intensity = bottleneck.nansum(hdulist['SCI'].data.astype(numpy.float32), axis=1)
     logger.debug("Integrated intensity: covers %d pixels along slit" % (integrated_intensity.shape[0]))
     # pyfits.PrimaryHDU(data=integrated_intensity).writeto()
-    numpy.savetxt("1d_%s.cat" % (fb[:-5]), integrated_intensity)
+    if (debug):
+        numpy.savetxt("1d_%s.cat" % (fb[:-5]), integrated_intensity)
 
     #
     # First of all, reject all pixels with zero fluxes
@@ -99,7 +101,8 @@ def find_slit_profile(hdulist, filename, source_region=[1400,2600]):
     background = ~bad_pixels
     likely_background_profile = numpy.array(integrated_intensity)
     likely_background_profile[~background] = numpy.NaN
-    numpy.savetxt("1d_bg_%s.cat.start" % (fb[:-5]), likely_background_profile)
+    if (debug):
+        numpy.savetxt("1d_bg_%s.cat.start" % (fb[:-5]), likely_background_profile)
 
     for i in range(5):
         logger.debug("Iteration %d: %d valid pixels considered BG" % (i+1, numpy.sum(background)))
@@ -118,7 +121,8 @@ def find_slit_profile(hdulist, filename, source_region=[1400,2600]):
 
         likely_background_profile = numpy.array(integrated_intensity)
         likely_background_profile[~background] = numpy.NaN
-        numpy.savetxt("1d_bg_%s.cat.%d" % (fb[:-5], i+1), likely_background_profile)
+        if (debug):
+            numpy.savetxt("1d_bg_%s.cat.%d" % (fb[:-5], i+1), likely_background_profile)
 
     skymask = ~bad_pixels & background
 
@@ -131,7 +135,8 @@ def find_slit_profile(hdulist, filename, source_region=[1400,2600]):
         bottleneck.nanmedian(
             likely_background_profile[i-half_window_size:i+half_window_size]) 
         for i in range(likely_background_profile.shape[0])])
-    numpy.savetxt("1d_bg_%s.cat.filtered" % (fb[:-5]), filtered_bg)
+    if (debug):
+        numpy.savetxt("1d_bg_%s.cat.filtered" % (fb[:-5]), filtered_bg)
 
     #
     # To smooth things out even better, fit a very low order spline, 
@@ -157,19 +162,22 @@ def find_slit_profile(hdulist, filename, source_region=[1400,2600]):
 
     w = numpy.ones(filtered_bg.shape[0])
     w[~skymask] = 0
-    numpy.savetxt("slitprofile.weights", w)
-    numpy.savetxt("slitprofile.do_not_fit", do_not_fit)
+    if (debug):
+        numpy.savetxt("slitprofile.weights", w)
+        numpy.savetxt("slitprofile.do_not_fit", do_not_fit)
     
-    logger.debug("xrange: %d ... %d" % (numpy.min(x[do_not_fit]), numpy.max(x[do_not_fit])))
-    numpy.savetxt("1d_bg_%s.cat.basepoints" % (fb[:-5]), t, "%.2f")
-    numpy.savetxt("1d_bg_%s.cat.wt" % (fb[:-5]), w)
+        logger.debug("xrange: %d ... %d" % (numpy.min(x[do_not_fit]), numpy.max(x[do_not_fit])))
+        numpy.savetxt("1d_bg_%s.cat.basepoints" % (fb[:-5]), t, "%.2f")
+        numpy.savetxt("1d_bg_%s.cat.wt" % (fb[:-5]), w)
+
     # lsq_spline = scipy.interpolate.LSQUnivariateSpline(
     #     x=x[do_not_fit], y=filtered_bg[do_not_fit], t=t, 
     #     w=None, bbox=[None, None], k=2)
     lsq_spline = scipy.interpolate.LSQUnivariateSpline(
         x=x, y=filtered_bg, t=t, 
         w=w, bbox=[None, None], k=2)
-    numpy.savetxt("1d_bg_%s.cat.fit" % (fb[:-5]), lsq_spline(x))
+    if (debug):
+        numpy.savetxt("1d_bg_%s.cat.fit" % (fb[:-5]), lsq_spline(x))
 
     #
     # Also try fitting a polynomial to the function
