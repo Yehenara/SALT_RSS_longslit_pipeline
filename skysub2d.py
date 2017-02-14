@@ -240,8 +240,10 @@ def make_2d_skyspectrum(hdulist,
         #     numpy.savetxt("wl+data__%d-%d.dump" % (sky_region[0],sky_region[1]),
         #                   data_wls)
 
-        all_skies = data_wls if all_skies == None else \
+        all_skies = data_wls if all_skies is None else \
             numpy.append(all_skies, data_wls, axis=0)
+        # print "all-skies:", all_skies
+        #logger.debug("all-skies data: %s" % (all_skies.shape))
 
     #
     # XXXXXXXX
