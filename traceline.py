@@ -33,7 +33,19 @@ import pickle
 from helpers import *
 # from rk_specred import find_slit_profile
 
-createdebugfiles = True
+createdebugfiles = False
+
+linetrace_cols = ["Y",
+                  "X",
+                  "---",
+                  "xxx",
+                  "XFINE",
+                  "?",
+                  "WAVELENGTH",
+                  ]
+linetrace_colidx = {}
+for idx,name in enumerate(linetrace_cols):
+    linetrace_colidx[name] = idx
 
 def find_chip_gaps(hdulist):
     
@@ -92,12 +104,14 @@ def trace_arc(data,
               direction=-1, # -1: downwards, +1: upwards
               max_window_x=5, # how far do we allow the arc to move from one row to the row
               max_corner_angle=60, # in degrees
+              verbose=False,
               ):
 
     logger = logging.getLogger("TraceArc")
 
     # extract x/y from tuple
     start_x, start_y = start
+    start_x, start_y = int(start_x), int(start_y)
 
     # Create a list of row numbers that we need to inspect
     if (direction > 0):
@@ -132,6 +146,7 @@ def trace_arc(data,
     corner_count = 0
     corner_min = 3
 
+    #print row_numbers
     for lines_since_start, next_row_idx in enumerate(row_numbers):
         #logger.debug("\n\nMoving from row %4d to %4d (%d)" % (current_row_idx, next_row_idx, corner_count))
 
@@ -204,7 +219,8 @@ def trace_arc(data,
                 # We found a corner
                 # --> retroactively stop following the line at the point the line 
                 #     started to deviate
-                logger.debug("Corner detected in line %d: %.1f then vs %.1f now" % (
+                if (verbose):
+                    logger.debug("Corner detected in line %d: %.1f then vs %.1f now" % (
                         current_row_idx, angle_past, angle_now))
                 avg_past = dx_past / n_pixels_for_corner
                 # for i in range(2*n_pixels_for_corners):
@@ -360,7 +376,7 @@ def subpixel_centroid_trace(data, tracedata, width=5, dumpfile=None, return_all=
 
     
 def trace_single_line(fitsdata, wls_data, line_idx, ds9_region_file=None,
-                      fine_centroiding=False,
+                      fine_centroiding=False, fine_centroiding_width=10,
                       centroiding_width=5,
                       linetrace_hdulist=None):
 
@@ -388,6 +404,7 @@ def trace_single_line(fitsdata, wls_data, line_idx, ds9_region_file=None,
 
     for direction_y in [-1,+1]:
         #direction_y = -1
+        # print arcpos_x, wls_data['line']
         lt = trace_arc(data=fitsdata,
                        start=(arcpos_x, wls_data['line']),
                        direction=direction_y,
@@ -404,7 +421,7 @@ def trace_single_line(fitsdata, wls_data, line_idx, ds9_region_file=None,
         #         # print >>ds9_region, 'point(%d,%d)' % (lt[idx,1], lt[idx,0])
         #         print >>ds9_region, 'line(%d,%d,  %d,%d' % (lt[idx,1]+1, lt[idx,0]+1, lt[idx-1,1]+1, lt[idx-1,0]+1)
 
-        all_row_data = lt if all_row_data == None else numpy.append(all_row_data, lt, axis=0)
+        all_row_data = lt if all_row_data is None else numpy.append(all_row_data, lt, axis=0)
 
     # Sort all_row_data by vertical position
     si = numpy.argsort(all_row_data[:,0])
@@ -434,15 +451,27 @@ def trace_single_line(fitsdata, wls_data, line_idx, ds9_region_file=None,
         # print line_cutout.shape
 
         imghdu = fits.ImageHDU()
-        fine_pos = subpixel_centroid_trace(data=fitsdata.T, tracedata=all_row_data, width=10, 
-                                           dumpfile=imghdu,
-                                           )#"linetrace_%d.fits" % (line_idx))
+        fine_pos = subpixel_centroid_trace(
+            data=fitsdata.T, tracedata=all_row_data,
+            width=fine_centroiding_width,
+            dumpfile=imghdu,
+        )#"linetrace_%d.fits" % (line_idx))
         if (not linetrace_hdulist == None):
             linetrace_hdulist.append(imghdu)
         #fits.PrimaryHDU(data=rectified).writeto("linetrace_%d.fits" % (line_idx), clobber=True)
-        
+        #print fine_pos
+        fp1, fp2 = fine_pos
+        #print fp1.shape, fp2.shape
+
+
     else:
-        fine_pos = all_row_data[:,1]
+        fp1 = all_row_data[:,1]
+        fp2 = numpy.ones_like(fp1)
+        #linetrace_prefinal = all_row_data
+
+    linetrace_prefinal = numpy.append(
+        all_row_data,
+        numpy.array([fp1, fp2]).T, axis=1)
 
     
     if (createdebugfiles):
@@ -455,8 +484,8 @@ def trace_single_line(fitsdata, wls_data, line_idx, ds9_region_file=None,
             # all_row_data[:,1] = fine_pos[:] # XXX
             numpy.savetxt(lt_file, all_row_data)
 
-    else:
-        all_row_data[:,1] = fine_pos[:]
+    # else:
+    #     all_row_data[:,1] = fine_pos[:]
 
     # make sure all trace positions are real positions, and exclude potential problems
     good_pos = numpy.isfinite(all_row_data[:,0]) & numpy.isfinite(all_row_data[:,1])
@@ -481,16 +510,22 @@ image\
     #
     # Assemble the return data
     #
+    # print all_row_data.shape
+    # print linetrace_prefinal.shape
+
 
 
     # compute the wavelength of this line
-    # print 
-    wl = numpy.polynomial.polynomial.polyval(
-        wls_data['linelist_arc'][line_idx,wlcal.lineinfo_colidx['PIXELPOS']], 
-        wls_data['wl_fit_coeffs'])
-    linetrace = numpy.append(all_row_data,
-                             numpy.ones((all_row_data.shape[0],1))*wl, 
-                             axis=1)
+    # print
+    if (wls_data is not None and 'wl_fit_coeffs' in wls_data):
+        wl = numpy.polynomial.polynomial.polyval(
+            wls_data['linelist_arc'][line_idx,wlcal.lineinfo_colidx['PIXELPOS']],
+            wls_data['wl_fit_coeffs'])
+        linetrace = numpy.append(linetrace_prefinal,
+                                 numpy.ones((all_row_data.shape[0],1))*wl,
+                                 axis=1)
+    else:
+        linetrace = linetrace_prefinal
 
     return linetrace
 
@@ -548,6 +583,9 @@ def pick_line_every_separation(
 
     logger = logging.getLogger("PickLines")
 
+    logger.info("Pick settings: %d lines, trace_every=%.2f, min_sep=%.2f, #pix=%d, min_S/N=%.1f" % (
+        len(arc_linelist), trace_every, min_line_separation, n_pixels, min_signal_to_noise
+    ))
     pickable_lines = numpy.array([])
 
     #
@@ -557,7 +595,8 @@ def pick_line_every_separation(
         trace_every *= n_pixels
     if (min_line_separation < 1):
         min_line_separation *= n_pixels
-
+    if (min_line_separation <= 0):
+        min_line_separation = 0.005 * n_pixels
     #
     # Add a unique line identifier to all lines
     #
@@ -625,6 +664,8 @@ def pick_line_every_separation(
         #print "Searching between", left_edge,"and",right_edge
 
         pickable_lines = numpy.append(pickable_lines, selected_lines[:,-1])
+        print left_edge, right_edge, n_pixels, min_line_separation, trace_every
+
 
     # print "\n=========="*5
 
@@ -797,7 +838,7 @@ def compute_2d_wavelength_solution(arc_filename,
     #time.sleep(2)
 
     
-    if (not trace_every == None):
+    if (trace_every is not None):
 
         pickle.dump(wls_data['linelist_arc'], open("arclist", "wb"))
         # print "exiting"
@@ -807,6 +848,9 @@ def compute_2d_wavelength_solution(arc_filename,
             trace_every, min_line_separation,
             hdulist['SCI'].data.shape[1]
             )
+        logger.debug("Selected %d suitable lines for tracing (every=%f, min_sep=%f)" % (
+            trace_line_indices.shape[0], trace_every, min_line_separation
+        ))
     else:
         if (n_lines_to_trace == 0):
             # if 0, use all lines
@@ -824,7 +868,7 @@ def compute_2d_wavelength_solution(arc_filename,
 
 
     # Reset ds9_arc
-    if (not arc_region_file == None):
+    if (arc_region_file is not None):
         pysalt.clobberfile(arc_region_file)
 
     traces = None
@@ -843,7 +887,8 @@ def compute_2d_wavelength_solution(arc_filename,
         # linetrace = trace_single_line(fitsdata_gf, wls_data, sort_sn[i],
         #                    ds9_region_file=arc_region_file)
         # print linetrace.shape
-        numpy.savetxt("LT.%d" % i, linetrace)
+        if (debug):
+            numpy.savetxt("LT.%d" % i, linetrace)
 
         traces = linetrace if traces == None else \
                  numpy.append(traces, linetrace, axis=0)
@@ -868,17 +913,21 @@ def compute_2d_wavelength_solution(arc_filename,
     #
 
     #numpy.savetxt("all_traces", traces)
+    logger.info("Computing a 2-d polynomial of the wavelength map")
+    good_data = numpy.isfinite(traces[:,linetrace_colidx['XFINE']]) & \
+        numpy.isfinite(traces[:,linetrace_colidx['Y']]) & \
+        numpy.isfinite(traces[:,linetrace_colidx['WAVELENGTH']])
 
-    m = polyfit2d(x=traces[:,1],
-                  y=traces[:,0],
-                  z=traces[:,4],
+    m = polyfit2d(x=traces[:,linetrace_colidx['XFINE']][good_data],
+                  y=traces[:,linetrace_colidx['Y']][good_data],
+                  z=traces[:,linetrace_colidx['WAVELENGTH']][good_data],
                   order=fit_order)
 
     plot_solution = False
     if (plot_solution and debug):
-        x=traces[:,1]
-        y=traces[:,0]
-        z=traces[:,4]
+        x=traces[:,linetrace_colidx['XFINE']]
+        y=traces[:,linetrace_colidx['Y']]
+        z=traces[:,linetrace_colidx['WAVELENGTH']]
         nx, ny = 20, 20
         xx, yy = numpy.meshgrid(numpy.linspace(x.min(), x.max(), nx), 
                                 numpy.linspace(y.min(), y.max(), ny))
