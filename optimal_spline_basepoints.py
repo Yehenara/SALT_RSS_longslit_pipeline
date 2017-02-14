@@ -223,7 +223,7 @@ def optimal_sky_subtraction(obj_hdulist,
 
     #wl_map = wlmap_model
 
-    logger.info("Loading all data from FITS")
+    logger.info("Preparing optimal sky-subtraction")
 
     import time
     time.sleep(1)
@@ -822,8 +822,9 @@ def optimal_sky_subtraction(obj_hdulist,
         #
         good_data = obj_cube_sorted[good_sky_data_sorted[:,0]]
         logger.debug("Dumping debug output")
-        numpy.savetxt("xxx.allskies", obj_cube_sorted)
-        numpy.savetxt("xxx.allskies.good", good_data)
+        if (debug):
+            numpy.savetxt("xxx.allskies", obj_cube_sorted)
+            numpy.savetxt("xxx.allskies.good", good_data)
         # print good_data.shape
 
 
