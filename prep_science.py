@@ -299,14 +299,16 @@ def extract_skyline_intensity_profile(
     #nightsky_spec_1d = numpy.average(skylines[600:620,:], axis=0)
     nightsky_spec_1d = numpy.average(data[600:620,:], axis=0)
     #print nightsky_spec_1d.shape
-    numpy.savetxt("nightsky", nightsky_spec_1d)
+    if (write_debug_data):
+        numpy.savetxt("nightsky", nightsky_spec_1d)
     #wlcal.extract_arc_spectrum(fake_hdu, line=600,avg_width=30)
     
     
     lines = wlcal.find_list_of_lines(nightsky_spec_1d, readnoise=2, avg_width=20,
                                      pre_smooth=2)
     dum = StringIO.StringIO()
-    numpy.savetxt(dum, lines)
+    if (write_debug_data):
+        numpy.savetxt(dum, lines)
     logger.debug("Found these lines:\n%s" % (dum.getvalue()))
 
     #print lines
@@ -321,7 +323,7 @@ def extract_skyline_intensity_profile(
         zoe=50,
         )
 
-    if (not wls == None):
+    if (wls is not None):
         # We have a valid wavelength calibration, so convert pixel 
         # coordinates to wavelengths
         lines[:,lineinfo_colidx['WAVELENGTH']] = \
@@ -331,7 +333,8 @@ def extract_skyline_intensity_profile(
             )
 
     #print lines
-    numpy.savetxt("nightsky_lines", lines)
+    if (write_debug_data):
+        numpy.savetxt("nightsky_lines", lines)
 
     #
     # Trace their intensity, and ompute a mean line intensity profile
@@ -354,9 +357,10 @@ def extract_skyline_intensity_profile(
             n_lines_max=5,
         )
 
-    numpy.savetxt("skylines.weightedavg", weighted_avg)
-    numpy.savetxt("skylines.blkavg", blkavg)
-    numpy.savetxt("skylines.blkmedian", blkmedian)
+    if (write_debug_data):
+        numpy.savetxt("skylines.weightedavg", weighted_avg)
+        numpy.savetxt("skylines.blkavg", blkavg)
+        numpy.savetxt("skylines.blkmedian", blkmedian)
 
     # weighted_avg = numpy.loadtxt("skylines.weightedavg")
     # blkavg = numpy.loadtxt("skylines.blkavg")
@@ -370,27 +374,31 @@ def extract_skyline_intensity_profile(
     
 
     data_x = numpy.arange(weighted_avg.shape[0])
-    intensity_profile = compute_smoothed_profile(data_x=data_x, 
-                                                 data_y=weighted_avg, 
-                                                 n_iterations=3,
-                                            )
-    numpy.savetxt("intensity_profile", intensity_profile)
+    intensity_profile = compute_smoothed_profile(
+        data_x=data_x,
+        data_y=weighted_avg,
+        n_iterations=3,
+    )
+    if (write_debug_data):
+        numpy.savetxt("intensity_profile", intensity_profile)
 
     # Make sure we deal with very small and/or negative numbers appropriately
     intensity_profile[intensity_profile < 1e-3] = 1e-3
-    numpy.savetxt("intensity_profile_v2", intensity_profile)
+    if (write_debug_data):
+        numpy.savetxt("intensity_profile_v2", intensity_profile)
 
     #
     # Now we have the full-resolution skyline intensity profile,
     # use it to correct the data
     #
-    numpy.savetxt("intensity_profile", intensity_profile)
-    flat_skylines = skylines / intensity_profile.reshape((-1,1))
-    fits.PrimaryHDU(data=flat_skylines).writeto("flat_skylines.fits", clobber=True)
+    if (write_debug_data):
+        numpy.savetxt("intensity_profile", intensity_profile)
+        flat_skylines = skylines / intensity_profile.reshape((-1,1))
+        fits.PrimaryHDU(data=flat_skylines).writeto("flat_skylines.fits", clobber=True)
 
-    fits.PrimaryHDU(
-        data=data/intensity_profile.reshape((-1,1))).writeto(
-            "flat_data.fits", clobber=True)
+        fits.PrimaryHDU(
+            data=data/intensity_profile.reshape((-1,1))).writeto(
+                "flat_data.fits", clobber=True)
 
     if (not plot_filename == None):
         logger.debug("Creating diagnostic plot for the line intensity profile")
