@@ -114,7 +114,10 @@ def rssmodelwave(grating,grang,artic,cbin,cols):
     # lmm = grlmm[grnum]
     alpha_r = numpy.radians(grang+Grat0)
     beta0_r = numpy.radians(artic*(1+ArtErr)+Home0)-alpha_r
-    gam0_r = numpy.radians(grgam0)
+    #
+    gam0_r = 0; #numpy.radians(grgam0) # RK FIX
+    # TODO: VERIFY OPERATION
+    #
     lam0 = 1e7*numpy.cos(gam0_r)*(numpy.sin(alpha_r) + numpy.sin(beta0_r))/lmm
     ww = lam0/1000. - 4.
     fcam = numpy.polyval(FCampoly,ww)

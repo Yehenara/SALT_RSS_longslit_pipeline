@@ -132,7 +132,7 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     for iteration in range(4):
         logger.debug("working on iterative correction for fcam(lambda) - iteration %d" % (iteration+1))
         beta = _x/fcam + beta0_r 
-        gamma = _y/fcam + gam0_r
+        gamma = _y/fcam #+ gam0_r
         #print beta.shape, gamma.shape
 
         # compute lambda (1e7 = angstroem/mm)
