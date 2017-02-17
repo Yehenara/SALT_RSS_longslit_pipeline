@@ -906,7 +906,7 @@ def specred(rawdir, prodir, options,
             hdu_mosaiced.writeto("dummy.fits", clobber=True)
             arc2d = skysub2d.make_2d_skyspectrum(
                 hdu_mosaiced,
-                wls_2darc,
+                model_wl, #wls_2darc,
                 sky_regions=arc_regions,
                 oversample_factor=1.0,
             )
@@ -940,6 +940,9 @@ def specred(rawdir, prodir, options,
             #             blank=0.0, clobber=True, logfile=logfile, verbose=True)
 
             # logger.debug("Done with specrectify")
+
+    if (options.arc_only):
+        return
 
     # return
     # os._exit(0)
@@ -1091,6 +1094,9 @@ def specred(rawdir, prodir, options,
             good_arc = good_arc_list[0]
             logger.info("Using ARC %s for wavelength calibration" % (good_arc))
 
+        # open the ARC frame
+        arc_hdu = fits.open(good_arc)
+
         #
         # Find symmetry from sky-lines
         #
@@ -1102,8 +1108,15 @@ def specred(rawdir, prodir, options,
                 avg_width=10,
                 n_lines=10,
         )
-        reference_row = int(best_midline[1])
-        logger.info("Using row %d as reference row" % (reference_row))
+        if (symmetry_lines is None):
+            # This means we could not find any valid linetraces
+            # assume the center from the corresponding arc
+            logger.warning("Adopting symmetry row from ARC")
+            reference_row = arc_hdu[0].header['WLREFROW']
+            linewidth = arc_hdu[0].header['LINEWDTH']
+        else:
+            reference_row = int(best_midline[1])
+            logger.info("Using row %d as reference row" % (reference_row))
 
         #
         # Find a global slit profile to identify obscured regions (i.e. behind guide and/or focus probe)
@@ -1131,9 +1144,11 @@ def specred(rawdir, prodir, options,
         # wl_hdu.name = "WAVELENGTH"
         # hdu.append(wl_hdu)
 
-        arc_hdu = fits.open(good_arc)
-        # wls_2d = arc_hdu['WAVELENGTH'].data
+        # This uses the ARC tracing & polynomial fit WL solution
+        wls_2d = arc_hdu['WAVELENGTH'].data
 
+        # BETTER: Use the 2-D model fit as WL solution
+        # This would also be saved in the ARC reference frame as WL_MODEL_2D
         model_wl = wlmodel.rssmodelwave(
             header=arc_hdu[0].header,
             img=arc_hdu['SCI'].data,
@@ -1276,7 +1291,12 @@ def specred(rawdir, prodir, options,
         # With this flat-field we can extract a better sky spectrum, and later improve the sky-subtraction
         #
         logger.info("Computing 2-D flatfield from night sky intensity profile")
-        vph_flatfield, vph_flat_interpol = fiddle_slitflat2.create_2d_flatfield_from_sky(wls_2d, img_data, bad_rows=bad_rows)
+        vph_flatfield, vph_flat_interpol = \
+            fiddle_slitflat2.create_2d_flatfield_from_sky(
+                wl=wls_2d,
+                img=img_data,
+                bad_rows=bad_rows
+        )
         flattened_img = img_data / vph_flatfield
         logger.info("Flattened image: %s" % (str(flattened_img.shape)))
 
@@ -2322,6 +2342,8 @@ if __name__ == '__main__':
                       action='store_false', default=True)
     parser.add_option("", "--noflats", dest='use_flats',
                       action='store_false', default=True)
+    parser.add_option("", "--arconly", dest='arc_only',
+                      action='store_true', default=False)
 
     (options, cmdline_args) = parser.parse_args()
 
