@@ -66,10 +66,10 @@ def map_wavelength_distortions(skyline_list, wl_2d, img_2d,
                                         dwl=d_wl,
                                         debug=debug,
         )
-    print len(dist)
-    print len(dist_binned)
-    print len(dist_median)
-    print len(dist_std)
+    # print len(dist)
+    # print len(dist_binned)
+    # print len(dist_median)
+    # print len(dist_std)
 
 
     # print "\n----------"*10,"mapping distortions", "\n-------------"*5
@@ -122,7 +122,7 @@ physical
         med_dwl = numpy.median(linedata_mean[:, 9][not_nan])
         linedata_mean[:, 9] -= med_dwl
 
-        print "LINEDATA", i, "\n", linedata_mean, "\n\n"
+        # print "LINEDATA", i, "\n", linedata_mean, "\n\n"
         numpy.savetxt("linedata_%d" % (i), linedata_mean)
 
         #all_lines[i] = linedata_mean
@@ -132,16 +132,7 @@ physical
         logger.warning("no lines found, aborting WL distortion modeling")
         return None, None
 
-    print len(all_lines)
-
-    import time
-    time.sleep(3)
-
-    for l in all_lines:
-        print type(l), l.shape
-
     all_lines = numpy.array(all_lines)
-    print all_lines
 
     logger.info("ALL-LINES SHAPE: %d,%d,%d" % (
         all_lines.shape[0], all_lines.shape[1], all_lines.shape[2]))
