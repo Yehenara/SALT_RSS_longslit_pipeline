@@ -128,6 +128,10 @@ physical
         #all_lines[i] = linedata_mean
         all_lines.append(linedata_mean)
 
+    if (len(all_lines) <= 0):
+        logger.warning("no lines found, aborting WL distortion modeling")
+        return None, None
+
     print len(all_lines)
 
     import time

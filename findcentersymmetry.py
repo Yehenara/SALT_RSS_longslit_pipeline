@@ -11,6 +11,7 @@ import scipy.optimize
 
 import wlcal
 import traceline
+from traceline import linetrace_colidx
 
 import logging
 
@@ -124,6 +125,7 @@ def find_curvature_symmetry_line(hdulist,
     )
 
     symmetry_line = numpy.empty((n_lines,3))
+    symmetry_line[:,:] = numpy.NaN
 
     for line in range(lines4curvature.shape[0]):
 
@@ -137,6 +139,13 @@ def find_curvature_symmetry_line(hdulist,
             fine_centroiding_width=2*linewidth,
         )
         numpy.savetxt("symmetry.lt.%d" % (lines4curvature[line,0]), lt)
+
+        #
+        # Require the trace to extend across at leat half the chip
+        #
+        valid_pos = numpy.isfinite(lt[:,linetrace_colidx['XFINE']])
+        if (numpy.sum(valid_pos) < 0.5 * data.shape[0]):
+            continue
 
         #
         # Now we have the line-trace, including fine-tracing.
@@ -240,6 +249,11 @@ def find_curvature_symmetry_line(hdulist,
     #
     good_lines = numpy.isfinite(symmetry_line[:,2])
     good_symmetry = symmetry_line[good_lines]
+    if (good_symmetry.shape[0] <= 0):
+        # no valid lines found
+        logger.warning("No valid lines found for symmetry finding.")
+        return None, None, None
+
     best_match = numpy.argmin(good_symmetry[:,2])
     best_midline = good_symmetry[best_match]
 
