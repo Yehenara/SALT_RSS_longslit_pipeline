@@ -758,11 +758,13 @@ def find_wavelength_solution(filename, line):
     #lampfile=pysalt.get_data_filename("pysalt$data/linelists/%s.wav" % lamp)
     #lampfile=pysalt.get_data_filename("pysalt$data/linelists/Ar.salt")
     #lampfile="Ar.lines"
-    try:
-        lines = numpy.loadtxt(lampfile)
-    except:
-        lines = manual_loadtxt(lampfile)
-
+    if (os.path.isfile(lampfile)):
+        try:
+            lines = numpy.loadtxt(lampfile)
+        except:
+            lines = manual_loadtxt(lampfile)
+    else:
+        return None
     #print lines.shape
     #print lines
 

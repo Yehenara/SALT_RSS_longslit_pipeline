@@ -116,7 +116,8 @@ warnings.simplefilter('ignore', UserWarning)
 wlmap_fitorder = [2, 2]
 
 
-def find_appropriate_arc(hdulist, arcfilelist, arcinfos=None):
+def find_appropriate_arc(hdulist, arcfilelist, arcinfos=None,
+                         accept_closest=False):
     if arcinfos is None:
         arcinfos = {}
     hdrs_to_match = [
@@ -125,15 +126,23 @@ def find_appropriate_arc(hdulist, arcfilelist, arcinfos=None):
         'ET-STATE',  # Etalon State Machine State
         'GR-STATE',  # Grating State Machine State
         'GR-STA',  # Commanded Grating Station
-        'GRATING',  # Commanded grating station
-        'GRTILT',  # Commanded grating angle
         'BS-STATE',  # Beamsplitter State Machine State
         'FI-STATE',  # Filter State Machine State
         'AR-STATE',  # Articulation State Machine State
         'AR-STA',  # Commanded Articulation Station
         'CAMANG',  # Commanded Articulation Station
         'POLCONF',  # Polarization configuration
+        'GRATING',  # Commanded grating station
     ]
+    flexmatch_headers = []
+    if (not accept_closest):
+        hdrs_to_match.append(
+            'GRTILT',  # Commanded grating angle
+        )
+    else:
+        flexmatch_headers.append(
+            'GRTILT',  # Commanded grating angle
+        )
 
     logger = logging.getLogger("FindGoodArc")
     logger.debug("Checking the following list of ARCs:\n * %s" % ("\n * ".join(arcfilelist)))
@@ -160,12 +169,12 @@ def find_appropriate_arc(hdulist, arcfilelist, arcinfos=None):
             # if we can't compare the headers we'll assume they won't match
             if (not hdrname in hdulist[0].header or not hdrname in hdr):
                 matches = False
-                logger.debug("Not found in one of the two files")
+                logger.debug("(%s) Not found in one of the two files" % (hdrname))
                 break
 
             if (not hdulist[0].header[hdrname] == hdr[hdrname]):
                 matches = False
-                logger.debug("Found in both, but does not match!")
+                logger.debug("(%s) Found in both, but does not match!" % (hdrname))
                 break
 
         # if all headers exist in both files and all headers match, 
@@ -174,9 +183,55 @@ def find_appropriate_arc(hdulist, arcfilelist, arcinfos=None):
             logger.debug("FOUND GOOD ARC")
             matching_arcs.append(arcfile)
 
+    #
+    # If accepting closest matches as well, check for best match
+    #
+    flex_matches = []
+    if (not accept_closest):
+        return matching_arcs, True
+
+    else:
+        logger.info("Selecting the closest matched ARC from list")
+        for arcfile in matching_arcs:
+            if (arcfile in arcinfos):
+                # use header that we extracted in an earlier run
+                hdr = arcinfos[arcfile]
+            else:
+                # this is a new file we haven't scanned before
+                arc_hdulist = fits.open(arcfile)
+                hdr = arc_hdulist[0].header
+                arcinfos[arcfile] = hdr
+                arc_hdulist.close()
+
+            fm = []
+            for hdrname in flexmatch_headers:
+                if (hdrname not in hdr):
+                    fm.append(numpy.NaN)
+                else:
+                    fm.append(hdr[hdrname])
+            flex_matches.append(fm)
+        flex_matches = numpy.array(flex_matches)
+
+        # target value
+        target_fm = []
+        for hdrname in flexmatch_headers:
+            if (hdrname not in hdulist[0].header):
+                target_fm.append(numpy.NaN)
+            else:
+                target_fm.append(hdulist[0].header[hdrname])
+        target_fm = numpy.array(target_fm)
+
+        diff = numpy.fabs((flex_matches - target_fm))
+        closest = numpy.argmin(diff)
+
+        #print matching_arcs
+        #print closest
+        #print numpy.array(matching_arcs)[closest]
+        matching_arcs = [numpy.array(matching_arcs)[closest]]
+
+        return matching_arcs, diff[closest]==0
     # print "***\n" * 3, matching_arcs, "\n***" * 3
 
-    return matching_arcs
 
 
 def tiledata(hdulist, rssgeom):
@@ -834,6 +889,9 @@ def specred(rawdir, prodir, options,
                 line=reference_row,
                 #line=(2070/biny)
             )
+            if (wls_data is None):
+                logger.error("Unable to compute WL map from %s" % (filename))
+                continue
 
             #
             # Write wavelength solution to FITS header so we can access it 
@@ -1017,6 +1075,36 @@ def specred(rawdir, prodir, options,
             if (not os.path.isfile(masterflat_filename)):
                 masterflat_filename = None
 
+        #
+        # Find the ARC closest in time to this frame
+        #
+        # obj_jd = hdulist[0].header['JD']
+        # delta_jd = numpy.fabs(arc_obstimes - obj_jd)
+        # good_arc_idx = numpy.argmin(delta_jd)
+        # good_arc = arc_mosaic_list[good_arc_idx]
+        # logger.info("Using ARC %s for wavelength calibration" % (good_arc))
+        # good_arc_list = find_appropriate_arc(hdu, obslog['ARC'], arcinfos)
+        raw_hdu = fits.open(filename)
+        good_arc_list, exact_match = find_appropriate_arc(
+            raw_hdu, arc_mosaic_list,
+            arcinfos,
+            accept_closest=options.use_closest_arc,
+        )
+        logger.debug("Found these ARCs as appropriate:\n -- %s" % ("\n -- ".join(good_arc_list)))
+
+        if (len(good_arc_list) == 0):
+            logger.error("Could not find any appropriate ARCs")
+            continue
+        elif (not exact_match):
+            good_arc = good_arc_list[0]
+            logger.warning("Couldn't find exact matching ARC, using closest match")
+        else:
+            good_arc = good_arc_list[0]
+            logger.info("Using ARC %s for wavelength calibration" % (good_arc))
+
+        # open the ARC frame
+        arc_hdu = fits.open(good_arc)
+
         logger.info("Creating mosaic for frame %s --> %s" % (fb, mosaic_filename))
         hdu = salt_prepdata(filename,
                             flatfield_frame=masterflat_filename,
@@ -1075,27 +1163,6 @@ def specred(rawdir, prodir, options,
         #                                header=hdu['SCI'].header)
         #     presub_hdu.name = source_ext + '.RAW'
         #     hdu.append(presub_hdu)
-
-        #
-        # Find the ARC closest in time to this frame
-        #
-        # obj_jd = hdulist[0].header['JD']
-        # delta_jd = numpy.fabs(arc_obstimes - obj_jd)
-        # good_arc_idx = numpy.argmin(delta_jd)
-        # good_arc = arc_mosaic_list[good_arc_idx]
-        # logger.info("Using ARC %s for wavelength calibration" % (good_arc))
-        # good_arc_list = find_appropriate_arc(hdu, obslog['ARC'], arcinfos)
-        good_arc_list = find_appropriate_arc(hdu, arc_mosaic_list, arcinfos)
-        logger.debug("Found these ARCs as appropriate:\n -- %s" % ("\n -- ".join(good_arc_list)))
-        if (len(good_arc_list) == 0):
-            logger.error("Could not find any appropriate ARCs")
-            continue
-        else:
-            good_arc = good_arc_list[0]
-            logger.info("Using ARC %s for wavelength calibration" % (good_arc))
-
-        # open the ARC frame
-        arc_hdu = fits.open(good_arc)
 
         #
         # Find symmetry from sky-lines
@@ -2344,7 +2411,8 @@ if __name__ == '__main__':
                       action='store_false', default=True)
     parser.add_option("", "--arconly", dest='arc_only',
                       action='store_true', default=False)
-
+    parser.add_option("", "--useclosestarc", dest="use_closest_arc",
+                      action="store_true", default=False)
     (options, cmdline_args) = parser.parse_args()
 
     print options
