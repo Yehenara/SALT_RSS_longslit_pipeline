@@ -142,7 +142,8 @@ def compute_profile(wl, img, line_wl, line_width=5, n_iter=15, polyorder=5,
 
         output[:,iteration+3] = fit
 
-    output[:,n_iter+3] = output[:,n_iter+2] / output[900,n_iter+2]
+    norm_line = int(0.5*output.shape[0])
+    output[:,n_iter+3] = output[:,n_iter+2] / output[norm_line,n_iter+2]
 
     if (debug):
         out_fn = "fiddle_slitflat.comb2.%7.2f-%.2f" % (line_wl, line_width)
