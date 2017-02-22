@@ -13,11 +13,6 @@ import drizzle_extract
 
 if __name__ == "__main__":
 
-    input_file = sys.argv[1]
-    if (not os.path.isfile(input_file)):
-        print "Input file does not exist"
-        sys.exit(0)
-
     parser = OptionParser()
     parser.add_option("", "--input", dest="inputext",
                       help="name of extension to extract",
@@ -35,6 +30,13 @@ if __name__ == "__main__":
                       help="output format (FITS/ascii)",
                       default="fits", type=str)
     (options, cmdline_args) = parser.parse_args()
+
+    input_file = cmdline_args[0]
+    output_file = cmdline_args[1]
+
+    if (not os.path.isfile(input_file)):
+        print "Input file does not exist"
+        sys.exit(0)
 
 
     hdulist = fits.open(input_file)
@@ -54,7 +56,7 @@ if __name__ == "__main__":
         wlmax = numpy.max(wl_data)
     if (dwl < 0):
         _disp = numpy.diff(wl_data)
-        dwl = 0.5*numpy.min(_disp)
+        dwl = numpy.fabs(dwl)*numpy.min(_disp)
         if (dwl <= 0):
             dwl = 0.1
 
@@ -115,6 +117,6 @@ if __name__ == "__main__":
     hdus[0] = fits.PrimaryHDU()
 
     hdulist = fits.HDUList(hdus)
-    hdulist.writeto(sys.argv[2], clobber=True)
+    hdulist.writeto(output_file, clobber=True)
     #fits.PrimaryHDU(data=rect_img).writeto("rect_img.fits", clobber=True)
     #fits.PrimaryHDU(data=rect_var).writeto("rect_var.fits", clobber=True)
