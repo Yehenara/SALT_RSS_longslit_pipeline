@@ -102,6 +102,7 @@ import tracespec
 import optimal_extraction
 import plot_high_res_sky_spec
 import findcentersymmetry
+import rectify_fullspec
 
 matplotlib.use('Agg')
 numpy.seterr(divide='ignore', invalid='ignore')
@@ -1000,6 +1001,10 @@ def specred(rawdir, prodir, options,
             # logger.debug("Done with specrectify")
 
     if (options.arc_only):
+        logger.info("Only ARCs were requested, all done!")
+        return
+    if (arc_mosaic_list is None or len(arc_mosaic_list) <= 0):
+        logger.error("NO VALID ARCs FOUND, aborting.")
         return
 
     # return
@@ -1685,7 +1690,8 @@ def specred(rawdir, prodir, options,
 
         # compute a source list (includes source position, extent, and intensity)
         extract1d = options.extract1d
-        if (extract1d):
+        still_good = True
+        if (extract1d or options.rectify):
             prof, prof_var = find_sources.continuum_slit_profile(
                 data=hdu['SKYSUB.OPT'].data.copy(),
                 sky=hdu['SKYSUB.IMG'].data.copy(),
@@ -1694,7 +1700,7 @@ def specred(rawdir, prodir, options,
             )
             if  (prof is None or prof_var is None):
                 logger.warning("Unable to extract 1-D spectra")
-                extract1d = False
+                still_good = False
             else:
                 numpy.savetxt("source_profile", prof)
                 src_profile_imghdu = find_sources.save_continuum_slit_profile(
@@ -1702,11 +1708,11 @@ def specred(rawdir, prodir, options,
                     prof_var=prof_var)
                 hdu_appends.append(src_profile_imghdu)
 
-        if (extract1d):
+        if ((extract1d or options.rectify) and still_good):
             sources = find_sources.identify_sources(prof, prof_var)
 
             if (sources is None):
-                extract1d = False
+                still_good = False
             else:
                 #
                 # Create a ds9-compatible region file to allow user-friendly
@@ -1725,10 +1731,12 @@ def specred(rawdir, prodir, options,
                 source_tbhdu = find_sources.create_source_tbhdu(sources)
                 hdu_appends.append(source_tbhdu)
 
-        if ((not extract1d) or
-            (extract1d and sources.shape[0]<= 0)):
-            logger.warning("No sources detected, skipping source extraction")
-        else:
+        # if ((not extract1d) or
+        #     (extract1d and sources.shape[0]<= 0)):
+        #     logger.warning("No sources detected, skipping source extraction")
+        # else:
+        if (still_good and (extract1d or options.rectify) and
+            sources.shape[0]>0):
             fullframe_background = zero_background.find_background_correction(
                 img_data=hdu['SKYSUB.OPT'].data.copy(),
                 sources=sources,
@@ -1763,8 +1771,25 @@ def specred(rawdir, prodir, options,
             # print slopes
             #hdu[0].header['TRACE0_0']
             pass
+        else:
+            still_good = False
 
-        if (extract1d):
+        if (still_good and options.rectify):
+            logger.info("Starting to rectify the SCI and VAR planes")
+            rect_flux, rect_var = rectify_fullspec.rectify_full_spec(
+                data=hdu['SKYSUB.OPT'].data.copy(),
+                var=hdu['VAR'].data.copy(),
+                wavelength=wls_2d,
+                traceoffset=trace_offset,
+            )
+            logger.debug("done rectifying")
+            logger.debug("appending SCI.RECT extension")
+            hdu.append(rect_flux)
+            logger.debug("appending VAR.RECT extension")
+            hdu.append(rect_var)
+
+
+        if (still_good and extract1d):
 
             for source_id, source in enumerate(sources):
 
@@ -2413,6 +2438,9 @@ if __name__ == '__main__':
                       action='store_true', default=False)
     parser.add_option("", "--useclosestarc", dest="use_closest_arc",
                       action="store_true", default=False)
+    parser.add_option("", "--rectify", dest="rectify",
+                      action="store_true", default=False)
+
     (options, cmdline_args) = parser.parse_args()
 
     print options

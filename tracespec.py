@@ -49,6 +49,7 @@ def compute_spectrum_trace(data, start_x, start_y, xbin=1,
 
             if (valid.any()):
                 weighted_y = numpy.sum((slit * pos_y)[valid]) / numpy.sum(slit[valid])
+                # weighted_y = pos_y[valid][numpy.argmax(slit[valid])] #numpy.sum((slit * pos_y)[valid]) / numpy.sum(slit[valid])
             else:
                 weighted_y = numpy.NaN
 
@@ -191,10 +192,17 @@ if __name__ == "__main__":
     fits.PrimaryHDU(data=data).writeto("tracespec.fits", clobber=True)
 
     print "computing spectrum trace"
-    spectrace_data = compute_spectrum_trace(data=data, start_x=start_x, start_y=start_y, xbin=xbin)
+    spectrace_data = compute_spectrum_trace(
+        data=data,
+        start_x=start_x, start_y=start_y,
+        xbin=xbin,
+        debug=True
+    )
 
     print "finding trace slopes"
     slopes, trace_offset = compute_trace_slopes(spectrace_data)
+    print slopes
+    numpy.savetxt("traceoffset", trace_offset)
 
     # Now generate a ds9 region file illustrating the actual peak positions, the best-fit lines and
     # 2 lines on either side to show the slit extent
@@ -215,4 +223,5 @@ physical"""
                 "line(%.2f,%.2f,%.2f,%.2f) # line=0 0" % (i+1, trace_offset[i]+start_y+slitwidth+1,
                                                           i+1+1, trace_offset[i+1]+start_y+slitwidth+1) for i in range(trace_offset.shape[0]-1)
             ])
+
     pysalt.mp_logging.shutdown_logging(logger_setup)
