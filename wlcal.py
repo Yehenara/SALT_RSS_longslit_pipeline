@@ -56,7 +56,7 @@ for idx,name in enumerate(lineinfo_cols):
 
 
 
-def rssmodelwave(grating,grang,artic,cbin,cols):
+def rssmodelwave(grating, grang, artic, xbin, cols):
 #
 # Taken from Ken Nordsieck's specpolmap.py
 # https://github.com/saltastro/SALTsandbox/blob/master/polSALT/polsalt/specpolmap.py
@@ -115,7 +115,7 @@ def rssmodelwave(grating,grang,artic,cbin,cols):
     alpha_r = numpy.radians(grang+Grat0)
     beta0_r = numpy.radians(artic*(1+ArtErr)+Home0)-alpha_r
     #
-    gam0_r = 0; #numpy.radians(grgam0) # RK FIX
+    gam0_r = 0. #numpy.radians(grgam0) if use_gam0_r else 0. # RK FIX
     # TODO: VERIFY OPERATION
     #
     lam0 = 1e7*numpy.cos(gam0_r)*(numpy.sin(alpha_r) + numpy.sin(beta0_r))/lmm
@@ -127,7 +127,7 @@ def rssmodelwave(grating,grang,artic,cbin,cols):
     T3 = (-1./24.)*3162.*disp/(fcam/47.43)**2 + T3Con*disp
     T0 = lam0 + T2 
     T1 = 3162.*disp + 3*T3
-    X = (numpy.array(range(cols))+1-cols/2)*cbin/3162.
+    X = (numpy.array(range(cols))+1-cols/2) * xbin / 3162.
     lam_X = T0+T1*X+T2*(2*X**2-1)+T3*(4*X**3-3*X)
     return lam_X
 
@@ -600,25 +600,25 @@ class  KenRSSModel( object ):
         self.ncols = ncols
 
         self.primhdr = primhdr
-        self.rbin,self.cbin = numpy.array(primhdr["CCDSUM"].split(" ")).astype(int)
+        self.xbin, self.ybin = numpy.array(primhdr["CCDSUM"].split(" ")).astype(int)
         self.grating = primhdr['GRATING'].strip()
         self.grang = float(primhdr['GR-ANGLE'])
         self.artic = float(primhdr['CAMANG'])
         
         self.logger.info("RSS model: bin: %d,%d - grating: %s - angle: %.2f - artic: %.2f  - columns: %d" % (
-            self.rbin,self.cbin,self.grating,self.grang,self.artic,self.ncols))
+            self.xbin, self.ybin, self.grating, self.grang, self.artic, self.ncols))
 
         self.compute()
         
-    def compute(self, grating=None, grang=None, artic=None, cbin=None, ncols=None, colpos=None):
+    def compute(self, grating=None, grang=None, artic=None, xbin=None, ncols=None, colpos=None):
 
-        _grating = self.grating if grating == None else grating
-        _grang = self.grang if grang == None else grang
-        _artic = self.artic if artic == None else artic
-        _cbin = self.cbin if cbin == None else cbin
-        _ncols = self.ncols if ncols == None else ncols
+        _grating = self.grating if grating is None else grating
+        _grang = self.grang if grang is None else grang
+        _artic = self.artic if artic is None else artic
+        _xbin = self.xbin if xbin is None else xbin
+        _ncols = self.ncols if ncols is None else ncols
 
-        self.all_wavelength = rssmodelwave(_grating,_grang,_artic,_cbin,_ncols)
+        self.all_wavelength = rssmodelwave(_grating,_grang,_artic,_xbin,_ncols)
 
         # fit a simple linear interpolation to the curve so we can look up 
         # wavelengths for a given pixel more easily
@@ -627,7 +627,7 @@ class  KenRSSModel( object ):
             y=self.all_wavelength
         )
 
-        if (not colpos == None):
+        if (colpos is not None):
             return self.compute_wl(colpos)
 
     def compute_wl(self, colpos):
@@ -640,7 +640,7 @@ class  KenRSSModel( object ):
         return self.all_wavelength
 
 
-def find_wavelength_solution(filename, line):
+def find_wavelength_solution(filename, line, debug=False):
 
     logger = logging.getLogger("FindWLS")
 
@@ -660,6 +660,8 @@ def find_wavelength_solution(filename, line):
 
     avg_width = 10
     spec = extract_arc_spectrum(hdulist, line, avg_width)
+    if (debug):
+        numpy.savetxt("findwls.spec", spec)
 
     binx, biny = pysalt.get_binning(hdulist)
     logger.debug("Binning: %d x %d" % (binx, biny))
@@ -698,13 +700,15 @@ def find_wavelength_solution(filename, line):
     #     beta=-rss.beta())
     
     # print "resolution element:", rss.calc_resolelement(rss.alpha(), -rss.beta()) * mm_to_A
-    logger.debug("From RSS model: wl-range: %.1f - %.1f [%.1f], dispersion: %.3f" % (
+    logger.info("From RSS model: wl-range: %.1f - %.1f [%.1f], dispersion: %.3f" % (
             blue_edge, red_edge, central_wl, dispersion))
 
     #
     # Now find a list of strong lines
     #
     lineinfo = find_list_of_lines(spec, avg_width)
+    if (debug):
+        numpy.savetxt("findwls.foundlines", lineinfo)
 
     ############################################################################
     #
@@ -739,8 +743,14 @@ def find_wavelength_solution(filename, line):
     # Now use the wavelength model to translate line position in pixel coordinates
     # into wavelength positions
     wl = kens_model.compute_wl(lineinfo[:,0])
-    numpy.savetxt("rss_lines", numpy.append(wl.reshape((-1,1)),
-                                            lineinfo, axis=1))
+    if (debug):
+        numpy.savetxt("rss_lines",
+                      numpy.append(wl.reshape((-1,1)),
+                                   lineinfo, axis=1))
+
+        _x = numpy.arange(hdulist['SCI'].data.shape[1])
+        _wl = kens_model.compute_wl(_x)
+        numpy.savetxt("findwls.wl_vs_x", numpy.array([_x,_wl]).T)
 
     # wl = lineinfo[:,0] * dispersion + blue_edge
     #lineinfo = numpy.append(lineinfo, wl.reshape((-1,1)), axis=1)
@@ -776,6 +786,8 @@ def find_wavelength_solution(filename, line):
     logger.debug("Found these lines for fitting (range: %.2f -- %.2f):\n%s" % (
         numpy.min(wl), numpy.max(wl), 
         "\n".join(["%10.4f" % l for l in ref_lines[:,0]])))
+    if (debug):
+        numpy.savetxt("findwls.reflines", ref_lines)
     #print ref_lines
 
     ############################################################################
@@ -810,7 +822,7 @@ def find_wavelength_solution(filename, line):
 
     
     ref_kdtree = scipy.spatial.cKDTree(ref_lines[:,0].reshape((-1,1)))
-    matching_radius=1.0
+    matching_radius=5.0
     for idx_camangle, idx_gratingangle in \
         itertools.product(range(n_steps_camangle), range(n_steps_gratingangle)):
 
@@ -1215,10 +1227,12 @@ def create_wl_calibration_plot(wls_data, hdulist, plotfile):
     ax.set_xlim((l_min, l_max))
 
     # also find good min and max ranges
+    fluxrange = numpy.nanpercentile(spec_combined[:,1], [3, 99.5])
     f_min, f_max = bottleneck.nanmin(spec_combined[:,1]), bottleneck.nanmax(spec_combined[:,1])
     # ax.set_ylim((0.9*f_min if f_min > 1 else 1, 1.1*f_max))
-    ax.set_ylim((100, 1.1*f_max))
-    
+    # ax.set_ylim((100, 1.1*f_max))
+    ax.set_ylim((fluxrange[0] if fluxrange[0] > 1. else 1., 1.1*f_max))
+
     # plot the actual spectrum we extracted for calibration
     ax.plot(spec_combined[:,0], spec_combined[:,1], "-g")
 
@@ -1262,7 +1276,7 @@ if __name__ == "__main__":
 
     hdulist = fits.open(filename)
 
-    wls_data = find_wavelength_solution(hdulist, line)
+    wls_data = find_wavelength_solution(hdulist, line, debug=True)
 
     plotfile = filename[:-5]+".png"
     create_wl_calibration_plot(wls_data, hdulist, plotfile)
