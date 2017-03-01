@@ -176,7 +176,13 @@ def rectify_full_spec(
 
         # Now also figure out the drizzle-factor along the wavelength axis
         pixels_wl = range(_wl1, _wl2)
-        pixel_fraction_wl = numpy.zeros((1, _wl2-_wl1))
+        try:
+            pixel_fraction_wl = numpy.zeros((1, _wl2-_wl1))
+        except ValueError:
+            logger.warning("ValueError: WL-range %d %d --> %d" % (
+                _wl1, _wl2, _wl2-_wl1))
+            continue
+
         for i, tp in enumerate(pixels_wl):
             #print "drizzle pixel",i,tp
             if (i == 0 and i == len(pixels_wl) - 1):
