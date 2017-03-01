@@ -623,12 +623,12 @@ def optimal_sky_subtraction(obj_hdulist,
     except ValueError:
         logger.error("ERROR: Unable to compute LSQUnivariateSpline (data: %d, bp=%d/10)" % (
             allskies.shape[0], k_opt_good.shape[0]))
-        return None, None
+        spline_opt = None
 
-    spec_simple = numpy.append(k_wl.reshape((-1,1)),
+    if (lots_of_debug and spline_opt is not None):
+        spec_simple = numpy.append(k_wl.reshape((-1,1)),
                                              spline_opt(k_wl).reshape((-1,1)),
                                              axis=1)
-    if (lots_of_debug):
         #numpy.savetxt(debug_prefix+"spline_opt", spec_simple)
         fits.PrimaryHDU(data=good_sky_data.astype(numpy.int)).writeto(
             "good_sky_data_x1.fits", clobber=True)
@@ -640,16 +640,16 @@ def optimal_sky_subtraction(obj_hdulist,
     # variations
     #
     #
-    if (not iterate):
-        if (return_2d):
-            pass
-        else:
-            # only return a 1-d spectrum, centered on the middle row 
-            line = obj_wl.shape[0]/2
-            wl = obj_wl[line,:]
-            spec = spline_opt(wl)
-
-            return spec
+    # if (not iterate):
+    #     if (return_2d):
+    #         pass
+    #     else:
+    #         # only return a 1-d spectrum, centered on the middle row
+    #         line = obj_wl.shape[0]/2
+    #         wl = obj_wl[line,:]
+    #         spec = spline_opt(wl)
+    #
+    #         return spec, None, None
 
 
     # _x = fits.ImageHDU(data=obj_hdulist['SCI.RAW'].data, 
@@ -1095,19 +1095,19 @@ def optimal_sky_subtraction(obj_hdulist,
     # _x.name = "STEP3"
     # obj_hdulist.append(_x)
 
-    if (compare):
-        #
-        # Compute differences between data and spline fit for both cases
-        #
-        logger.info("computing comparison data")
-        fit_orig = spline_orig(allskies[:,0])
-        fit_opt = spline_opt(allskies[:,0])
-
-        comp = numpy.zeros((allskies.shape[0], allskies.shape[1]+2))
-        comp[:, :allskies.shape[1]] = allskies[:,:]
-        comp[:, allskies.shape[1]+0] = fit_orig[:]
-        comp[:, allskies.shape[1]+1] = fit_opt[:]
-        numpy.savetxt(debug_prefix+"allskies.comp", comp)
+    # if (compare):
+    #     #
+    #     # Compute differences between data and spline fit for both cases
+    #     #
+    #     logger.info("computing comparison data")
+    #     fit_orig = spline_orig(allskies[:,0])
+    #     fit_opt = spline_opt(allskies[:,0])
+    #
+    #     comp = numpy.zeros((allskies.shape[0], allskies.shape[1]+2))
+    #     comp[:, :allskies.shape[1]] = allskies[:,:]
+    #     comp[:, allskies.shape[1]+0] = fit_orig[:]
+    #     comp[:, allskies.shape[1]+1] = fit_opt[:]
+    #     numpy.savetxt(debug_prefix+"allskies.comp", comp)
 
 
     #
@@ -1204,7 +1204,7 @@ def optimal_sky_subtraction(obj_hdulist,
         return sky2d, spline_iter, (x_eff, wl_map, medians, p_scale, p_skew,
                                     fm, good_sky_data)
 
-    return None
+    return None, None, None
 
     
 
