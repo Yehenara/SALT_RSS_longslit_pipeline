@@ -49,16 +49,11 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     y *= ybin
     x *= xbin
 
-    if (y_center is None):
-        y_center = img.shape[0]/2. * ybin
-    if (x_center is None):
-        x_center = img.shape[1]/2. * xbin
-    logger.info("Using (un-binned) center coordinates of x=%.2f, y=%.2f" % (x_center, y_center))
-
     #
     #
     # Load spectrograph parameters
     #
+    logger.debug("Loading spectrograph parameters")
     spec=numpy.loadtxt(datadir+"/spec.txt",usecols=(1,))
     grating_rotation_home_error = spec[0]
 
@@ -67,11 +62,11 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
 
     grating_names=numpy.loadtxt(datadir+"/gratings.txt",dtype=str,usecols=(0,))
     #grname=numpy.loadtxt(datadir+"gratings.txt",dtype=str,usecols=(0,))
-    grlmm,grgam0=numpy.loadtxt(datadir+"/gratings.txt",usecols=(1,2),
+    grlmm,grgam0,y0=numpy.loadtxt(datadir+"/gratings.txt",usecols=(1,2,3),
                                unpack=True)
 
 
-    #
+#
     # Load all necessary information from FITS header
     #
     grating_angle = header['GR-ANGLE'] # alpha_C
@@ -89,6 +84,16 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     grnum = numpy.where(grating_names==grating_name)[0][0]
     grating_lines_per_mm = grlmm[grating_name == grating_names][0]
     logger.debug("grating lines/mm: %f" % (grating_lines_per_mm))
+
+
+    if (y_center is None):
+        y_center = y0[grating_name==grating_names]
+    if (x_center is None):
+        x_center = img.shape[1] / 2. * xbin
+    logger.info("Using (un-binned) center coordinates of x=%.2f, y=%.2f" % (
+        x_center, y_center))
+
+
 
     #alpha_r = numpy.radians(grang+Grat0)
     alpha_r = numpy.radians(grating_angle+Grat0)
