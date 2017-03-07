@@ -267,7 +267,9 @@ def find_nightsky_lines(
 
     # print lines
 
-    return skylines, line_list
+    ref_y = 0.5*(y_range[1] + y_range[0])
+
+    return skylines, line_list, ref_y
 
 
 def add_skylines_as_tbhdu(skyline_list):
