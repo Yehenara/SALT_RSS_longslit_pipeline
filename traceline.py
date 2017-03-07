@@ -492,7 +492,7 @@ def trace_single_line(fitsdata, wls_data, line_idx, ds9_region_file=None,
     all_row_data = all_row_data[good_pos]
 
 
-    if (not ds9_region_file == None):
+    if (ds9_region_file is not None):
         with open(ds9_region_file, "a") as ds9_region:
             print >>ds9_region, """\
 # Region file format: DS9 version 4.1
