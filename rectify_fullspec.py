@@ -99,6 +99,9 @@ def rectify_full_spec(
 
     out_drizzle = numpy.zeros((n_samples, n_spec_bins))
     out_drizzle_var = numpy.zeros((n_samples, n_spec_bins))
+    out_drizzle[:,:] = numpy.NaN
+    out_drizzle_var[:,:] = numpy.NaN
+
     print out_drizzle.shape
 
     print use_data.shape
@@ -219,8 +222,15 @@ def rectify_full_spec(
         var_distribution = full_weight_matrix * var
 
         try:
-            out_drizzle[_y1:_y2, _wl1:_wl2] += flux_distribution
-            out_drizzle_var[_y1:_y2, _wl1:_wl2] += var_distribution
+            _out = out_drizzle[_y1:_y2, _wl1:_wl2]
+            _out_var = out_drizzle_var[_y1:_y2, _wl1:_wl2]
+
+            still_nan = numpy.isnan(_out)
+            _out[still_nan] = 0.
+            _out_var[still_nan] = 0.
+
+            _out += flux_distribution
+            _out_var += var_distribution
         except ValueError:
             pass
 
