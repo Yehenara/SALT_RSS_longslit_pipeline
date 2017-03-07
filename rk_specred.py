@@ -1230,15 +1230,18 @@ def specred(rawdir, prodir, options,
         # wls_2d = arc_hdu['WL_MODEL_2D'].data
         wls_2d = model_wl
 
+        fits.PrimaryHDU(data=wls_2d).writeto("specred.wl.fits", clobber=True)
+        # os._exit(-1)
 
         n_params = arc_hdu[0].header['WLSFIT_N']
         # copy a couple of relevant keywords
-        for key in ['RSSYCNTR', 'WCSFIT_N']:
+        for key in ['RSSYCNTR', 'WLSFIT_N', 'LINEWDTH']:
             if (key in arc_hdu[0].header):
                 hdu[0].header[key] = arc_hdu[0].header[key]
             else:
                 logger.warning("Unable to find FITS keywords %s in %s" % (key, good_arc))
         # hdu[0].header["WLSFIT_N"] = arc_hdu[0].header["WLSFIT_N"]
+
         wls_fit = numpy.zeros(n_params)
         for i in range(n_params):
             wls_fit[i] = arc_hdu[0].header['WLSFIT_%d' % (i)]
@@ -1246,11 +1249,11 @@ def specred(rawdir, prodir, options,
         hdu.append(fits.ImageHDU(data=wls_2d, name='WAVELENGTH.RAW'))
 
         in_data = hdu['SCI.CRJ'].data if 'SCI.CRJ' in hdu else hdu['SCI'].data
-        skylines, skyline_list = prep_science.find_nightsky_lines(
+        skylines, skyline_list, skylines_ref_y = prep_science.find_nightsky_lines(
             data=numpy.array(in_data),
             linewidth=linewidth,
-
         )
+
         #
         # TODO: CONVERT SKYLINE POSITION FROM PIXELS TO WAVELENGTHS
         #
@@ -1259,13 +1262,32 @@ def specred(rawdir, prodir, options,
         # Fit and include the wavelength distortion (based on sky-lines) in the wavelength calibration
         #
         if (options.model_wl_distortions):
+            print "\n"*10
+            print "symmetry:", reference_row
+            print "spec ref row:", skylines_ref_y
+            print "from model:", hdu[0].header['RSSYCNTR']
+            print "binning x/y: ", binx, biny
+            print "\n"*10
             distortion_2d, dist_quality = model_distortions.map_wavelength_distortions(
                 skyline_list=skyline_list,
                 wl_2d=wls_2d,
                 img_2d=img_crjclean,
                 diff_2d=None,
                 badrows=bad_rows_img,
+                linewidth=linewidth,
+                xbin=binx, ybin=biny,
+                ref_row=skylines_ref_y,
+                symmetry_row=hdu[0].header['RSSYCNTR'], #reference_row*biny,
+                primary_header=hdu[0].header,
+                debug=options.debug,
             )
+            fits.PrimaryHDU(data=distortion_2d).writeto(
+                "specred.wl.dist.fits", clobber=True)
+            if (distortion_2d is not None):
+                max_dist = 1.5
+                # TODO: CHANGE TO BE DEPENDENT ON SPECTRAL RESOLUTION ETC.
+                distortion_2d[distortion_2d > max_dist] = max_dist
+                distortion_2d[distortion_2d < -1*max_dist] = -1*max_dist
         else:
             logger.info("Per user-request skipping WL distortion modeling")
             distortion_2d = None
@@ -1277,6 +1299,9 @@ def specred(rawdir, prodir, options,
         else:
             logger.warning("Skipping the wavelength distortion due to "
                            "previous error")
+
+        hdu.writeto("dummy.fits", clobber=True)
+        #os._exit(0)
 
         fits.PrimaryHDU(data=img_data).writeto("img0.fits", clobber=True)
 
@@ -1336,7 +1361,9 @@ def specred(rawdir, prodir, options,
             # numpy.savetxt(sys.stdout, skyline_list, "%9.3f")
             numpy.savetxt("nightsky_lines", skyline_list)
 
-        hdu_appends.append(prep_science.add_skylines_as_tbhdu(skyline_list))
+        skyline_tbhdu = prep_science.add_skylines_as_tbhdu(skyline_list)
+        skyline_tbhdu.header['LINEREFY'] = skylines_ref_y
+        hdu_appends.append(skyline_tbhdu)
 
         #
         # Map wavelength distortions
@@ -1461,10 +1488,14 @@ def specred(rawdir, prodir, options,
             debug=options.debug,
             noise_mode=options.sky_noise_mode,
         )
-        (x_eff, wl_map, medians, p_scale, p_skew, fm, good_sky_data) = extra
+        if (sky_2d is not None):
+            (x_eff, wl_map, medians, p_scale, p_skew, fm, good_sky_data) = extra
 
-        hdu.append(fits.ImageHDU(data=good_sky_data.astype(numpy.int),
-                                 name="GOOD_SKY_DATA"))
+            hdu.append(fits.ImageHDU(data=good_sky_data.astype(numpy.int),
+                                     name="GOOD_SKY_DATA"))
+        else:
+            logger.critical("Error while computing sky spectrum")
+            good_sky_data = None
 
         #
         # Create a diagnostic plot showing the sky-spectrum and the
@@ -2450,5 +2481,4 @@ if __name__ == '__main__':
         #rawdir = cmdline_args[0]
         prodir = os.path.curdir + '/'
         specred(raw_dir, prodir, options)
-
     pysalt.mp_logging.shutdown_logging(logger)
