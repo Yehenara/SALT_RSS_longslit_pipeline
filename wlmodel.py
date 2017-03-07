@@ -36,15 +36,19 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
         xbin=1, ybin=1,
         y_center=None, x_center=None,
         debug=False,
+        x=None, y=None,
 ):
 #   compute wavelengths from model (this can probably be done using pyraf spectrograph model)
 
     logger = logging.getLogger("RSS-2Dmodel")
-    ncols = img.shape[0]
-    nrows = img.shape[1]
+    # ncols = img.shape[0]
+    # nrows = img.shape[1]
 
     # compute X/Y position for each pixel
-    y,x = numpy.indices(img.shape)
+
+    if (x is None or y is None):
+        y,x = numpy.indices(img.shape)
+
     # also account for binning
     y *= ybin
     x *= xbin
@@ -133,7 +137,7 @@ def rssmodelwave(#grating,grang,artic,cbin,refimg,
     logger.debug("min/max _X [mm]: %f / %f" % (numpy.min(_x), numpy.max(_x)))
     logger.debug("min/max _Y [mm]: %f / %f" % (numpy.min(_y), numpy.max(_y)))
 
-    alpha = numpy.ones(img.shape) * alpha_r
+    alpha = numpy.ones(x.shape) * alpha_r
     for iteration in range(4):
         logger.debug("working on iterative correction for fcam(lambda) - iteration %d" % (iteration+1))
         beta = _x/fcam + beta0_r 
