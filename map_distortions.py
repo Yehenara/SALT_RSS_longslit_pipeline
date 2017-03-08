@@ -36,7 +36,6 @@ def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None,
     masked -= bias_level
     img_2d -= bias_level
 
-
     for i_dist, x in enumerate(x_list):
 
         ix = int(x-1)
@@ -54,8 +53,13 @@ def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None,
         datastore = numpy.empty((wl_2d.shape[0], 14))
         datastore[:,:] = numpy.NaN
 
+        if (debug):
+            _xxx = masked.copy()
+
         for cur_y in range(wl_2d.shape[0]):
             in_range = (wl_2d[cur_y, :] > (wl-dwl)) & (wl_2d[cur_y, :] < (wl+dwl))
+            if (debug):
+                _xxx[cur_y, ~in_range] = numpy.NaN
 
             if (badrows is not None and badrows[cur_y]):
                 continue
@@ -110,6 +114,9 @@ def map_distortions(wl_2d, diff_2d, img_2d, y, x_list, badrows=None,
             #     12 /     11: integrated flux
             #     13 /     12: number of pixels with f>0.5*f_peak
             #     14 /     13: min_intensity
+
+        if (debug):
+            fits.PrimaryHDU(data=_xxx).writeto("distortion_line_%04d.fits" % (x), clobber=True)
 
         #
         # Now that we have the full profile, compute mean profile every N rows
