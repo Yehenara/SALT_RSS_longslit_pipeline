@@ -26,7 +26,7 @@ distmap_cols.extend(
      'WL_OFFSET'
      ]
 )
-print distmap_cols
+# print distmap_cols
 distmap_colidx = {}
 for idx,name in enumerate(distmap_cols):
     distmap_colidx[name] = idx

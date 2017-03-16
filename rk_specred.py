@@ -607,8 +607,8 @@ def specred(rawdir, prodir, options,
             calfile=None, lamp='Ar',
             automethod='Matchlines', skysection=[800, 1000],
             cleanup=True):
-    print rawdir
-    print prodir
+    #print rawdir
+    #print prodir
 
     logger = logging.getLogger("SPECRED")
 
@@ -620,7 +620,7 @@ def specred(rawdir, prodir, options,
 
     # get the current date for the files
     obsdate = os.path.basename(infile_list[0])[1:9]
-    print obsdate
+    #print obsdate
 
     # set up some files that will be needed
     logfile = 'spec' + obsdate + '.log'
@@ -632,16 +632,16 @@ def specred(rawdir, prodir, options,
 
     # import pysalt.lib.saltsafeio as saltio
 
-    print infile_list
+    #print infile_list
 
     #
     #
     # Now reduce all files, one by one
     #
     #
-    work_dir = "working/"
-    if (not os.path.isdir(work_dir)):
-        os.mkdir(work_dir)
+    # work_dir = "working/"
+    # if (not os.path.isdir(work_dir)):
+    #     os.mkdir(work_dir)
 
     # #
     # # Make sure we have all directories 
@@ -687,6 +687,9 @@ def specred(rawdir, prodir, options,
                 obstype, "\n -- ".join(obslog[obstype])))
         else:
             logger.info("No files of type %s found!" % (obstype))
+
+    if (options.check_only):
+        return
 
     #
     # Go through the list of files, find all flat-fields, and create a master flat field
@@ -2471,11 +2474,13 @@ if __name__ == '__main__':
                       action="store_true", default=False)
     parser.add_option("", "--rectify", dest="rectify",
                       action="store_true", default=False)
+    parser.add_option("", "--check", dest="check_only",
+                      action="store_true", default=False)
 
     (options, cmdline_args) = parser.parse_args()
 
-    print options
-    print cmdline_args
+    # print options
+    # print cmdline_args
 
     for raw_dir in cmdline_args[0:]:
         #rawdir = cmdline_args[0]
